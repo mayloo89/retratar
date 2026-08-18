@@ -9,8 +9,8 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 )
@@ -43,24 +43,35 @@ type Config struct {
 	// [Config.Validate] for why.
 	PagesHost string
 
+	// AdminAddr serves diagnostics: pprof, expvar, build info. It listens on
+	// its own socket, and that socket must never be public. Empty disables it.
+	AdminAddr string
+
 	ShutdownTimeout time.Duration
 }
 
-// Load reads configuration from the environment and validates it.
+// Getenv looks up an environment variable. Taking it as a parameter rather
+// than calling [os.Getenv] keeps configuration testable: a test supplies a map
+// instead of mutating process-wide state, so config tests run in parallel.
+type Getenv func(string) string
+
+// Load reads configuration through getenv and validates it. Pass [os.Getenv]
+// in main.
 //
 // Every key is optional and falls back to a development default, except in
 // production where [Config.Validate] rejects unsafe combinations.
-func Load() (Config, error) {
-	shutdown, err := durationEnv("SHUTDOWN_TIMEOUT", 15*time.Second)
+func Load(getenv Getenv) (Config, error) {
+	shutdown, err := durationEnv(getenv, "SHUTDOWN_TIMEOUT", 15*time.Second)
 	if err != nil {
 		return Config{}, err
 	}
 
 	cfg := Config{
-		Env:             Environment(cmp.Or(os.Getenv("ENV"), string(EnvDevelopment))),
-		Addr:            cmp.Or(os.Getenv("ADDR"), ":8080"),
-		AppHost:         cmp.Or(os.Getenv("APP_HOST"), "app.localhost:8080"),
-		PagesHost:       cmp.Or(os.Getenv("PAGES_HOST"), "pages.localhost:8080"),
+		Env:             Environment(cmp.Or(getenv("ENV"), string(EnvDevelopment))),
+		Addr:            cmp.Or(getenv("ADDR"), ":8080"),
+		AppHost:         cmp.Or(getenv("APP_HOST"), "app.localhost:8080"),
+		PagesHost:       cmp.Or(getenv("PAGES_HOST"), "pages.localhost:8080"),
+		AdminAddr:       cmp.Or(getenv("ADMIN_ADDR"), "127.0.0.1:8081"),
 		ShutdownTimeout: shutdown,
 	}
 
@@ -97,6 +108,15 @@ func (c Config) Validate() error {
 	if c.ShutdownTimeout <= 0 {
 		errs = append(errs, fmt.Errorf("%w: SHUTDOWN_TIMEOUT must be positive, got %s",
 			ErrInvalidConfig, c.ShutdownTimeout))
+	}
+
+	// pprof exposes goroutine stacks and heap contents, and expvar exposes
+	// internal counters. Bound to a public interface that is a data leak and a
+	// cheap denial of service, so the process refuses to start that way.
+	if c.AdminAddr != "" && !isLoopback(c.AdminAddr) {
+		errs = append(errs, fmt.Errorf(
+			"%w: ADMIN_ADDR %q must bind to loopback; it serves pprof and expvar",
+			ErrInsecureHosts, c.AdminAddr))
 	}
 
 	// The session cookie is issued by AppHost. If PagesHost were AppHost or a
@@ -136,13 +156,24 @@ func (c Config) BaseURL() string {
 	return u.String()
 }
 
-// hostOnly strips an optional port from a host[:port] string. It does not use
-// net.SplitHostPort, which fails on a bare host.
-func hostOnly(hostport string) string {
-	if i := strings.LastIndexByte(hostport, ':'); i >= 0 {
-		return hostport[:i]
+// isLoopback reports whether addr binds only to the local host.
+func isLoopback(addr string) bool {
+	host := hostOnly(addr)
+	if host == "localhost" {
+		return true
 	}
-	return hostport
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// hostOnly strips an optional port from a host[:port] string, and the brackets
+// from an IPv6 literal. net.SplitHostPort alone is not enough: it errors on a
+// bare host, which is a valid input here.
+func hostOnly(hostport string) string {
+	if host, _, err := net.SplitHostPort(hostport); err == nil {
+		return host
+	}
+	return strings.Trim(hostport, "[]")
 }
 
 // isSubdomainOf reports whether host sits under parent, e.g. "a.example.com"
@@ -151,8 +182,8 @@ func isSubdomainOf(host, parent string) bool {
 	return strings.HasSuffix(host, "."+parent)
 }
 
-func durationEnv(key string, fallback time.Duration) (time.Duration, error) {
-	raw := os.Getenv(key)
+func durationEnv(getenv Getenv, key string, fallback time.Duration) (time.Duration, error) {
+	raw := getenv(key)
 	if raw == "" {
 		return fallback, nil
 	}

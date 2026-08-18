@@ -6,34 +6,42 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
+	"github.com/mayloo89/retratar/internal/buildinfo"
 	"github.com/mayloo89/retratar/internal/config"
 	"github.com/mayloo89/retratar/internal/web"
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	if err := run(ctx, os.Getenv, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-// run holds the whole program so that every exit path returns an error instead
-// of calling os.Exit, which makes the startup path testable.
-func run(ctx context.Context, out *os.File) error {
-	cfg, err := config.Load()
+// run holds the whole program. Every dependency on the outside world arrives
+// as a parameter and every exit path returns an error instead of calling
+// os.Exit, so a test can run the real startup path against a fake environment.
+func run(ctx context.Context, getenv config.Getenv, stdout io.Writer) error {
+	cfg, err := config.Load(getenv)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	logger := newLogger(cfg, out)
+	logger := newLogger(cfg, stdout)
 	logger.Info("starting",
+		slog.String("build", buildinfo.Get().String()),
 		slog.String("env", string(cfg.Env)),
 		slog.String("addr", cfg.Addr),
 		slog.String("app_host", cfg.AppHost),
@@ -42,11 +50,24 @@ func run(ctx context.Context, out *os.File) error {
 
 	srv := &web.Server{Config: cfg, Logger: logger}
 
-	httpServer := &http.Server{
-		Addr:    cfg.Addr,
-		Handler: srv.Handler(),
-		// Every timeout is set. An unbounded read or an idle connection that
-		// never closes is how a single client exhausts the server.
+	public := newHTTPServer(cfg.Addr, srv.Handler(), logger)
+
+	servers := []*http.Server{public}
+	if cfg.AdminAddr != "" {
+		// Diagnostics live on their own loopback listener. They must never
+		// share a mux or a socket with the public surface.
+		servers = append(servers, newHTTPServer(cfg.AdminAddr, web.AdminHandler(), logger))
+	}
+
+	return serve(ctx, logger, cfg.ShutdownTimeout, servers...)
+}
+
+// newHTTPServer applies the timeouts every server needs. An unbounded read or
+// an idle connection that never closes is how one client exhausts the process.
+func newHTTPServer(addr string, h http.Handler, logger *slog.Logger) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           h,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -54,31 +75,59 @@ func run(ctx context.Context, out *os.File) error {
 		MaxHeaderBytes:    1 << 16, // 64 KiB
 		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
 	}
+}
 
-	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
-	defer stop()
+// serve runs every server until one fails or ctx is cancelled, then drains all
+// of them within the shutdown budget.
+func serve(ctx context.Context, logger *slog.Logger, timeout time.Duration, servers ...*http.Server) error {
+	errCh := make(chan error, len(servers))
 
-	errCh := make(chan error, 1)
-	go func() {
-		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- fmt.Errorf("listen: %w", err)
-			return
-		}
-		errCh <- nil
-	}()
-
-	select {
-	case err := <-errCh:
-		return err
-	case <-ctx.Done():
-		logger.Info("shutting down", slog.Duration("timeout", cfg.ShutdownTimeout))
+	for _, s := range servers {
+		go func() {
+			logger.Info("listening", slog.String("addr", s.Addr))
+			err := s.ListenAndServe()
+			if errors.Is(err, http.ErrServerClosed) {
+				err = nil
+			}
+			errCh <- err
+		}()
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cfg.ShutdownTimeout)
+	var runErr error
+	select {
+	case runErr = <-errCh:
+		if runErr != nil {
+			runErr = fmt.Errorf("listen: %w", runErr)
+		}
+	case <-ctx.Done():
+		logger.Info("shutting down", slog.Duration("timeout", timeout))
+	}
+
+	// context.WithoutCancel: ctx is already cancelled on the signal path, and
+	// a cancelled context would make Shutdown return before draining anything.
+	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 	defer cancel()
 
-	if err := httpServer.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("shutdown: %w", err)
+	var (
+		wg       sync.WaitGroup
+		mu       sync.Mutex
+		shutErrs []error
+	)
+	for _, s := range servers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := s.Shutdown(shutdownCtx); err != nil {
+				mu.Lock()
+				shutErrs = append(shutErrs, fmt.Errorf("shutdown %s: %w", s.Addr, err))
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+
+	if err := errors.Join(append(shutErrs, runErr)...); err != nil {
+		return err
 	}
 	logger.Info("stopped")
 	return nil
@@ -86,7 +135,7 @@ func run(ctx context.Context, out *os.File) error {
 
 // newLogger returns structured JSON in production, and human-readable text
 // locally.
-func newLogger(cfg config.Config, out *os.File) *slog.Logger {
+func newLogger(cfg config.Config, out io.Writer) *slog.Logger {
 	opts := &slog.HandlerOptions{Level: slog.LevelInfo}
 	if cfg.IsProduction() {
 		return slog.New(slog.NewJSONHandler(out, opts))

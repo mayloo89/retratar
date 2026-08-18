@@ -23,6 +23,7 @@ linters:
 
     # Security
     - gosec
+    - forbidigo
 
     # Clarity
     - revive
@@ -53,6 +54,28 @@ linters:
       excludes:
         - G104 # duplicates errcheck
 
+    forbidigo:
+      # Patterns match the source form (http.Handle), not the resolved path.
+      # An aliased import would slip past: this is a guardrail against habit,
+      # not a sandbox.
+      analyze-types: true
+      forbid:
+        # net/http/pprof arms http.DefaultServeMux from its init. Serving that
+        # mux, or registering on it, would publish heap dumps and goroutine
+        # stacks. Construct servers with an explicit handler instead.
+        - pattern: ^http\.DefaultServeMux$
+          msg: "DefaultServeMux serves pprof; build an explicit *http.ServeMux"
+        - pattern: ^http\.Handle$
+          msg: "registers on http.DefaultServeMux; use your own *http.ServeMux"
+        - pattern: ^http\.HandleFunc$
+          msg: "registers on http.DefaultServeMux; use your own *http.ServeMux"
+        # http.ListenAndServe and ListenAndServeTLS are covered by gosec G114
+        # ("no support for setting timeouts"), which reports at the same
+        # position and wins the deduplication. Verified: a call to either is
+        # rejected, just under the gosec name.
+        - pattern: ^fmt\.Print(f|ln)?$
+          msg: "use the injected *slog.Logger"
+
     revive:
       rules:
         - name: exported
@@ -77,6 +100,7 @@ linters:
         linters:
           - errcheck
           - gosec
+          - forbidigo
           - noctx
 
 formatters:

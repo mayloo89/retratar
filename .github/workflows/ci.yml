@@ -14,6 +14,8 @@ concurrency:
 
 env:
   GO_VERSION: "1.26"
+  # Pinned: a golangci-lint release must not fail an unrelated pull request.
+  LINT_VERSION: "v2.12.2"
 
 jobs:
   build:
@@ -57,7 +59,7 @@ jobs:
 
       - uses: golangci/golangci-lint-action@v7
         with:
-          version: latest
+          version: ${{ env.LINT_VERSION }}
 
   vuln:
     name: Vulnerabilities
@@ -71,4 +73,4 @@ jobs:
           check-latest: true
 
       - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+        run: go tool govulncheck ./...

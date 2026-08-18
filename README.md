@@ -38,11 +38,14 @@ Requires Go 1.26 or newer.
 
 ```sh
 cp .env.example .env
-make run                 # http://app.localhost:8080
-make check               # tidy, format, lint, test, vulnerability scan
+git config core.hooksPath .githooks   # gofmt + vet before each commit
+make run                              # http://app.localhost:8080
+make check                            # tidy, format, lint, test, vulnerability scan
 ```
 
-`make help` lists every target.
+`make help` lists every target. Diagnostics — pprof, expvar, `/version` — are on
+`http://127.0.0.1:8081`, a separate listener that refuses to bind anywhere but
+loopback.
 
 Use `localhost` hostnames locally. The session cookie is always `Secure`, and
 browsers treat `localhost` as a secure context — an IP address or a custom
@@ -54,18 +57,24 @@ Packages are organised by feature, not by layer. There is no `models`,
 `services`, or `repositories` package, and no `pkg/`.
 
 ```
-cmd/server/       process entry point and wiring
-internal/config/  environment configuration and its invariants
-internal/web/     routing, middleware, security headers
-docs/             architecture notes
+cmd/server/         process entry point and wiring
+internal/buildinfo/ what this binary was built from
+internal/config/    environment configuration and its invariants
+internal/web/       routing, middleware, security headers
+docs/decisions/     architecture decision records
 ```
 
-Dependencies are struct fields assigned in `main`. There is no DI container.
+Dependencies are struct fields assigned in `main`. There is no DI container, and
+`main` takes its environment as a parameter so the startup path is testable.
+
+Tool versions are pinned: `govulncheck` through the `tool` directive in
+`go.mod`, `golangci-lint` through a version in the Makefile and CI.
 
 ## Architecture
 
 One binary serves both surfaces, split by the request's `Host` header. See
-[docs/architecture.md](docs/architecture.md).
+[docs/architecture.md](docs/architecture.md), and
+[docs/decisions/](docs/decisions/) for why each choice was made.
 
 The app and the pages live on **different registrable domains**, and that is
 load-bearing rather than cosmetic: pages render content their owners control, so

@@ -1,0 +1,27 @@
+#!/bin/sh
+# Enable with: git config core.hooksPath .githooks
+#
+# Fast checks only. Anything slower than a couple of seconds belongs in CI;
+# a slow hook is a hook people bypass with --no-verify.
+set -e
+
+unformatted=$(gofmt -l .)
+if [ -n "$unformatted" ]; then
+	echo "gofmt would change these files:"
+	echo "$unformatted"
+	echo "run: gofmt -w ."
+	exit 1
+fi
+
+# A real .env must never be committed, whatever .gitignore says.
+# .env.example is the documented template and is expected in the repository.
+secrets=$(git diff --cached --name-only \
+	| grep -E '(^|/)\.env($|\.)' \
+	| grep -vE '(^|/)\.env\.example$' || true)
+if [ -n "$secrets" ]; then
+	echo "refusing to commit environment files:"
+	echo "$secrets"
+	exit 1
+fi
+
+go vet ./...

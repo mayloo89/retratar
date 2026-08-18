@@ -8,8 +8,16 @@ import (
 	"github.com/mayloo89/retratar/internal/config"
 )
 
+// env returns a Getenv backed by a map, so config tests never touch process
+// state and can run in parallel.
+func env(pairs map[string]string) config.Getenv {
+	return func(key string) string { return pairs[key] }
+}
+
 func TestLoadDefaults(t *testing.T) {
-	cfg, err := config.Load()
+	t.Parallel()
+
+	cfg, err := config.Load(env(nil))
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -21,10 +29,34 @@ func TestLoadDefaults(t *testing.T) {
 	}
 }
 
-func TestLoadRejectsBadDuration(t *testing.T) {
-	t.Setenv("SHUTDOWN_TIMEOUT", "soon")
+func TestLoadReadsEnvironment(t *testing.T) {
+	t.Parallel()
 
-	_, err := config.Load()
+	cfg, err := config.Load(env(map[string]string{
+		"ENV":              "production",
+		"ADDR":             ":9000",
+		"APP_HOST":         "retratar.com.ar",
+		"PAGES_HOST":       "retrat.ar",
+		"SHUTDOWN_TIMEOUT": "30s",
+	}))
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if !cfg.IsProduction() {
+		t.Error("IsProduction() = false, want true")
+	}
+	if cfg.Addr != ":9000" {
+		t.Errorf("Addr = %q, want %q", cfg.Addr, ":9000")
+	}
+	if cfg.ShutdownTimeout != 30*time.Second {
+		t.Errorf("ShutdownTimeout = %s, want 30s", cfg.ShutdownTimeout)
+	}
+}
+
+func TestLoadRejectsBadDuration(t *testing.T) {
+	t.Parallel()
+
+	_, err := config.Load(env(map[string]string{"SHUTDOWN_TIMEOUT": "soon"}))
 	if !errors.Is(err, config.ErrInvalidConfig) {
 		t.Fatalf("Load() error = %v, want ErrInvalidConfig", err)
 	}
@@ -35,6 +67,8 @@ func TestLoadRejectsBadDuration(t *testing.T) {
 // the session cookie makes account takeover a CSS-free, one-line attack. The
 // process must refuse to start rather than run in that shape.
 func TestValidateRejectsSharedRegistrableDomain(t *testing.T) {
+	t.Parallel()
+
 	base := config.Config{
 		Env:             config.EnvProduction,
 		Addr:            ":8080",
@@ -57,6 +91,8 @@ func TestValidateRejectsSharedRegistrableDomain(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			cfg := base
 			cfg.AppHost, cfg.PagesHost = tt.appHost, tt.pagesHost
 
@@ -75,6 +111,8 @@ func TestValidateRejectsSharedRegistrableDomain(t *testing.T) {
 }
 
 func TestValidateCollectsEveryProblem(t *testing.T) {
+	t.Parallel()
+
 	var cfg config.Config // zero value: everything is wrong
 
 	err := cfg.Validate()
@@ -88,7 +126,57 @@ func TestValidateCollectsEveryProblem(t *testing.T) {
 	}
 }
 
+// TestValidateRejectsPublicAdminAddr guards the diagnostics listener. pprof
+// serves goroutine stacks and heap contents to anyone who can reach it.
+func TestValidateRejectsPublicAdminAddr(t *testing.T) {
+	t.Parallel()
+
+	base := config.Config{
+		Env:             config.EnvProduction,
+		Addr:            ":8080",
+		AppHost:         "retratar.com.ar",
+		PagesHost:       "retrat.ar",
+		ShutdownTimeout: time.Second,
+	}
+
+	tests := []struct {
+		addr    string
+		wantErr error
+	}{
+		{"127.0.0.1:8081", nil},
+		{"localhost:8081", nil},
+		{"[::1]:8081", nil},
+		{"", nil}, // disabled
+		{":8081", config.ErrInsecureHosts},
+		{"0.0.0.0:8081", config.ErrInsecureHosts},
+		{"10.0.0.5:8081", config.ErrInsecureHosts},
+	}
+
+	for _, tt := range tests {
+		name := tt.addr
+		if name == "" {
+			name = "disabled"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := base
+			cfg.AdminAddr = tt.addr
+
+			err := cfg.Validate()
+			if tt.wantErr == nil && err != nil {
+				t.Fatalf("Validate() error = %v, want nil", err)
+			}
+			if tt.wantErr != nil && !errors.Is(err, tt.wantErr) {
+				t.Fatalf("Validate() error = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestPageHostFor(t *testing.T) {
+	t.Parallel()
+
 	cfg := config.Config{PagesHost: "retrat.ar"}
 
 	if got, want := cfg.PageHostFor("sebas"), "sebas.retrat.ar"; got != want {
@@ -97,6 +185,8 @@ func TestPageHostFor(t *testing.T) {
 }
 
 func TestBaseURLSchemeFollowsEnvironment(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		env  config.Environment
 		want string
@@ -107,6 +197,8 @@ func TestBaseURLSchemeFollowsEnvironment(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(string(tt.env), func(t *testing.T) {
+			t.Parallel()
+
 			cfg := config.Config{Env: tt.env, AppHost: "retratar.com.ar"}
 			if got := cfg.BaseURL(); got != tt.want {
 				t.Errorf("BaseURL() = %q, want %q", got, tt.want)

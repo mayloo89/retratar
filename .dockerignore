@@ -1,0 +1,14 @@
+.git
+.github
+.githooks
+bin
+dist
+docs
+deploy
+*.md
+.env
+.env.*
+!.env.example
+coverage.*
+Dockerfile
+.dockerignore

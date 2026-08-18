@@ -1,5 +1,7 @@
-BINARY := bin/server
-GO     ?= go
+BINARY  := bin/server
+GO      ?= go
+# Pinned so a new release cannot fail the build on an unrelated day.
+LINT_VERSION := v2.12.2
 
 .DEFAULT_GOAL := help
 
@@ -29,13 +31,18 @@ cover: ## Run tests and open the coverage report
 lint: ## Run golangci-lint
 	golangci-lint run ./...
 
+.PHONY: lint-version
+lint-version: ## Show the golangci-lint version this project targets
+	@echo $(LINT_VERSION)
+	@golangci-lint version
+
 .PHONY: fmt
 fmt: ## Format the code
 	golangci-lint fmt ./...
 
 .PHONY: vuln
 vuln: ## Check dependencies against the Go vulnerability database
-	$(GO) run golang.org/x/vuln/cmd/govulncheck@latest ./...
+	$(GO) tool govulncheck ./...
 
 .PHONY: tidy
 tidy: ## Tidy and verify modules
