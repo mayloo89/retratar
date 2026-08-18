@@ -1,0 +1,197 @@
+package web_test
+
+import (
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+
+	"github.com/mayloo89/retratar/internal/config"
+	"github.com/mayloo89/retratar/internal/web"
+)
+
+func testServer(t *testing.T) *web.Server {
+	t.Helper()
+	return &web.Server{
+		Config: config.Config{
+			Env:       config.EnvProduction,
+			Addr:      ":8080",
+			AppHost:   "retratar.com.ar",
+			PagesHost: "retrat.ar",
+		},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+}
+
+func get(t *testing.T, h http.Handler, host, path string) *http.Response {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	req.Host = host
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec.Result()
+}
+
+func TestHostSplit(t *testing.T) {
+	h := testServer(t).Handler()
+
+	tests := []struct {
+		name       string
+		host       string
+		wantStatus int
+		wantBody   string
+	}{
+		{"app surface", "retratar.com.ar", http.StatusOK, "retratar app\n"},
+		{"app surface ignores case", "RETRATAR.com.AR", http.StatusOK, "retratar app\n"},
+		{"app surface ignores default port", "retratar.com.ar:443", http.StatusOK, "retratar app\n"},
+		{"page", "sebas.retrat.ar", http.StatusOK, "page: sebas\n"},
+		{"bare pages domain redirects to app", "retrat.ar", http.StatusFound, ""},
+		// An unknown host must never fall through to a surface. A hostname
+		// pointed at this server that we did not configure is not ours, and
+		// serving the login form on it would put credentials on a foreign origin.
+		{"unknown host", "evil.example.com", http.StatusNotFound, ""},
+		{"nested page host", "a.b.retrat.ar", http.StatusNotFound, ""},
+		{"subdomain of app host", "anything.retratar.com.ar", http.StatusNotFound, ""},
+		{"reserved handle", "admin.retrat.ar", http.StatusNotFound, ""},
+		// DNS is case-insensitive, so an uppercase host is the same page.
+		{"uppercase page host", "SEBAS.retrat.ar", http.StatusOK, "page: sebas\n"},
+		{"underscore in handle", "se_bas.retrat.ar", http.StatusNotFound, ""},
+		{"leading hyphen in handle", "-sebas.retrat.ar", http.StatusNotFound, ""},
+		{"punycode-shaped handle", "xn--a.retrat.ar", http.StatusNotFound, ""},
+		{"empty host", "", http.StatusNotFound, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := get(t, h, tt.host, "/")
+			defer resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
+
+			if resp.StatusCode != tt.wantStatus {
+				t.Fatalf("status = %d, want %d", resp.StatusCode, tt.wantStatus)
+			}
+			if tt.wantBody == "" {
+				return
+			}
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				t.Fatalf("read body: %v", err)
+			}
+			if string(body) != tt.wantBody {
+				t.Errorf("body = %q, want %q", body, tt.wantBody)
+			}
+		})
+	}
+}
+
+// TestPagesSurfaceNeverSetsCookies is the constraint the whole two-domain
+// design exists to guarantee. If a response from a page host ever carries a
+// Set-Cookie, session state has leaked onto an origin that renders
+// user-controlled content, and account takeover follows.
+func TestPagesSurfaceNeverSetsCookies(t *testing.T) {
+	h := testServer(t).Handler()
+
+	resp := get(t, h, "sebas.retrat.ar", "/")
+	defer resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
+
+	if cookies := resp.Cookies(); len(cookies) != 0 {
+		t.Fatalf("page response set %d cookie(s), want 0: %v", len(cookies), cookies)
+	}
+}
+
+// TestPagesCSPDeniesScripts guards the second half of the same boundary. User
+// pages are CSS, never scripts.
+func TestPagesCSPDeniesScripts(t *testing.T) {
+	h := testServer(t).Handler()
+
+	resp := get(t, h, "sebas.retrat.ar", "/")
+	defer resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
+
+	policy := resp.Header.Get("Content-Security-Policy")
+	if policy == "" {
+		t.Fatal("page response has no Content-Security-Policy")
+	}
+	for _, banned := range []string{"script-src", "unsafe-inline", "unsafe-eval"} {
+		if strings.Contains(policy, banned) {
+			t.Errorf("pages CSP contains %q, want it absent: %s", banned, policy)
+		}
+	}
+	if !strings.Contains(policy, "default-src 'none'") {
+		t.Errorf("pages CSP lacks default-src 'none': %s", policy)
+	}
+}
+
+func TestSecurityHeaders(t *testing.T) {
+	h := testServer(t).Handler()
+
+	resp := get(t, h, "retratar.com.ar", "/")
+	defer resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
+
+	want := map[string]string{
+		"X-Content-Type-Options":    "nosniff",
+		"Referrer-Policy":           "strict-origin-when-cross-origin",
+		"Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+	}
+	for header, value := range want {
+		if got := resp.Header.Get(header); got != value {
+			t.Errorf("%s = %q, want %q", header, got, value)
+		}
+	}
+}
+
+func TestHSTSOnlyInProduction(t *testing.T) {
+	s := testServer(t)
+	s.Config.Env = config.EnvDevelopment
+
+	resp := get(t, s.Handler(), "retratar.com.ar", "/")
+	defer resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
+
+	if got := resp.Header.Get("Strict-Transport-Security"); got != "" {
+		t.Errorf("Strict-Transport-Security = %q in development, want empty", got)
+	}
+}
+
+func TestHealthz(t *testing.T) {
+	resp := get(t, testServer(t).Handler(), "retratar.com.ar", "/healthz")
+	defer resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+}
+
+// TestTLSCheck guards the on-demand certificate gate. Answering 200 for an
+// arbitrary hostname would let anyone point DNS here and burn the certificate
+// authority's rate limit for the whole domain.
+func TestTLSCheck(t *testing.T) {
+	h := testServer(t).Handler()
+
+	tests := []struct {
+		name       string
+		domain     string
+		wantStatus int
+	}{
+		{"app host", "retratar.com.ar", http.StatusOK},
+		{"pages apex", "retrat.ar", http.StatusOK},
+		{"valid handle", "sebas.retrat.ar", http.StatusOK},
+		{"unknown domain", "evil.example.com", http.StatusForbidden},
+		{"lookalike suffix", "notretrat.ar", http.StatusForbidden},
+		{"reserved handle", "admin.retrat.ar", http.StatusForbidden},
+		{"nested host", "a.b.retrat.ar", http.StatusForbidden},
+		{"missing domain", "", http.StatusBadRequest},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := "/internal/tls-check?domain=" + url.QueryEscape(tt.domain)
+			resp := get(t, h, "retratar.com.ar", path)
+			defer resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
+
+			if resp.StatusCode != tt.wantStatus {
+				t.Errorf("status = %d, want %d", resp.StatusCode, tt.wantStatus)
+			}
+		})
+	}
+}

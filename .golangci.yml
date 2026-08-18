@@ -1,0 +1,89 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    # Correctness
+    - errcheck        # unchecked errors
+    - govet           # the compiler team's own checks
+    - staticcheck     # bugs, simplifications, style (includes gosimple + stylecheck)
+    - ineffassign     # assignments never read
+    - unused          # dead code
+    - bodyclose       # unclosed HTTP response bodies leak connections
+    - rowserrcheck    # sql.Rows.Err() left unchecked
+    - sqlclosecheck   # unclosed sql.Rows / sql.Stmt
+    - nilerr          # `return nil` after a non-nil error
+    - errorlint       # %v instead of %w, == instead of errors.Is
+    - contextcheck    # a lost context breaks cancellation
+    - noctx           # HTTP requests sent without a context
+    - makezero        # append to a make()d slice with a length
+
+    # Security
+    - gosec
+
+    # Clarity
+    - revive
+    - misspell
+    - predeclared     # shadowing builtins like `clear`, `max`, `min`
+    - unconvert       # redundant type conversions
+    - wastedassign
+    - usestdlibvars   # http.MethodGet over "GET"
+    - copyloopvar
+    - intrange        # `for i := range n` over the three-clause form
+    - errname         # ErrFoo / FooError naming
+    - godot           # comments end in a period
+    - testifylint
+    - tparallel
+    - thelper         # test helpers must call t.Helper()
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: false
+
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment # readability of a struct beats a few bytes of padding
+
+    gosec:
+      excludes:
+        - G104 # duplicates errcheck
+
+    revive:
+      rules:
+        - name: exported
+          arguments: ["disableStutteringCheck"]
+        - name: package-comments
+        - name: context-as-argument
+        - name: error-return
+        - name: error-strings
+        - name: indent-error-flow
+        - name: var-naming
+        - name: unreachable-code
+        - name: early-return
+
+    staticcheck:
+      checks: ["all"]
+
+  exclusions:
+    generated: lax
+    rules:
+      # Test code trades some rigour for readability.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+          - noctx
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/mayloo89/retratar

@@ -1,0 +1,46 @@
+# Caddy in front of the Go binary.
+#
+# Certificates for *.retrat.ar are issued per hostname on first request rather
+# than as a wildcard: a wildcard needs a DNS-01 challenge, and NIC.ar has no
+# supported DNS provider module. The `ask` endpoint below is what stops that
+# from becoming an abuse vector — Caddy asks the app before requesting any
+# certificate, and the app answers 403 for a hostname it does not recognise.
+
+{
+	email {$ACME_EMAIL}
+
+	on_demand_tls {
+		ask http://127.0.0.1:8080/internal/tls-check
+		interval 2m
+		burst 5
+	}
+}
+
+(common) {
+	encode zstd gzip
+
+	header {
+		-Server
+		-X-Powered-By
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}
+
+# The owner-facing app: sign-in, editor. Certificate is issued normally.
+retratar.com.ar, www.retratar.com.ar {
+	import common
+	reverse_proxy 127.0.0.1:8080
+}
+
+# Public pages, one per handle. Certificates are on-demand, gated by `ask`.
+*.retrat.ar, retrat.ar {
+	import common
+	tls {
+		on_demand
+	}
+	reverse_proxy 127.0.0.1:8080
+}
