@@ -89,5 +89,6 @@ see [SECURITY.md](SECURITY.md) for anything security-related.
 
 ## Licence
 
-Not yet chosen. Until a `LICENSE` file exists, all rights are reserved: the code
-is readable, not reusable.
+All rights reserved — see [LICENSE](LICENSE). The source is published to be read
+and reviewed, not reused. Running it as a service is not permitted. Ask if you
+want to do something with it.

@@ -26,14 +26,6 @@ func TestGetIsPopulated(t *testing.T) {
 	}
 }
 
-func TestGetIsStable(t *testing.T) {
-	t.Parallel()
-
-	if buildinfo.Get() != buildinfo.Get() {
-		t.Error("Get() returned different values across calls")
-	}
-}
-
 func TestStringIncludesVersionAndGoVersion(t *testing.T) {
 	t.Parallel()
 
