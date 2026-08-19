@@ -1,0 +1,43 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  schedule:
+    # Weekly, off the hour. CodeQL ships new queries: a scan that passed in
+    # March can find a real bug in June without the code having changed.
+    - cron: "23 6 * * 1"
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyse
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          check-latest: true
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: go
+          # Wider than the default suite. Turn this back to the default if the
+          # false positives cost more attention than the findings are worth.
+          queries: security-extended
+
+      - uses: github/codeql-action/autobuild@v3
+
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:go"

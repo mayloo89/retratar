@@ -43,6 +43,11 @@ jobs:
       - name: Test
         run: go test -race -shuffle=on -coverprofile=coverage.out -covermode=atomic ./...
 
+      # Printed rather than gated. A hard floor on a young codebase pushes you
+      # to write tests that raise the number instead of tests that catch bugs.
+      - name: Coverage
+        run: go tool cover -func=coverage.out | tail -1
+
       - name: Build
         run: go build -trimpath ./...
 
@@ -74,3 +79,24 @@ jobs:
 
       - name: govulncheck
         run: go tool govulncheck ./...
+
+  docker:
+    name: Container image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The image is built and thrown away. This job exists so a change that
+      # breaks the build is caught here rather than during a deploy.
+      - name: Build image
+        run: docker build --tag retratar:ci .
+
+      # Read from the image config, not from inside the container: the base is
+      # distroless, so there is no shell and no id binary to ask.
+      - name: Image runs as a non-root user
+        run: |
+          user=$(docker inspect --format '{{.Config.User}}' retratar:ci)
+          echo "image user: ${user:-<empty, means root>}"
+          case "$user" in
+            ""|root|root:*|0|0:*) echo "::error::image would run as root"; exit 1 ;;
+          esac
