@@ -43,12 +43,31 @@ type Config struct {
 	// [Config.Validate] for why.
 	PagesHost string
 
+	// DatabaseURL is the Postgres connection string. Every durable thing the
+	// product has lives there; this process keeps no state of its own.
+	//
+	// It carries a password, so it is never logged and never echoed into an
+	// error message.
+	DatabaseURL string
+
 	// AdminAddr serves diagnostics: pprof, expvar, build info. It listens on
 	// its own socket, and that socket must never be public. Empty disables it.
 	AdminAddr string
 
 	ShutdownTimeout time.Duration
 }
+
+// defaultDatabaseURL points at the Postgres in compose.yaml. It exists so that
+// a fresh clone runs after `make db-up` and nothing else. sslmode=disable is
+// correct for a loopback container and rejected in production by [Config.Validate].
+//
+// gosec is right that this embeds a password, and it stays embedded rather than
+// assembled from parts: the pair is the throwaway one in compose.yaml, bound to
+// 127.0.0.1, and hiding it from the scanner would only make a real credential
+// easier to smuggle in here later.
+//
+//nolint:gosec // G101: development-only credential, matches compose.yaml.
+const defaultDatabaseURL = "postgres://retratar:retratar@127.0.0.1:5432/retratar?sslmode=disable"
 
 // Getenv looks up an environment variable. Taking it as a parameter rather
 // than calling [os.Getenv] keeps configuration testable: a test supplies a map
@@ -71,6 +90,7 @@ func Load(getenv Getenv) (Config, error) {
 		Addr:            cmp.Or(getenv("ADDR"), ":8080"),
 		AppHost:         cmp.Or(getenv("APP_HOST"), "app.localhost:8080"),
 		PagesHost:       cmp.Or(getenv("PAGES_HOST"), "pages.localhost:8080"),
+		DatabaseURL:     cmp.Or(getenv("DATABASE_URL"), defaultDatabaseURL),
 		AdminAddr:       cmp.Or(getenv("ADMIN_ADDR"), "127.0.0.1:8081"),
 		ShutdownTimeout: shutdown,
 	}
@@ -105,6 +125,8 @@ func (c Config) Validate() error {
 	if c.PagesHost == "" {
 		errs = append(errs, fmt.Errorf("%w: PAGES_HOST is empty", ErrInvalidConfig))
 	}
+	errs = append(errs, c.validateDatabaseURL()...)
+
 	if c.ShutdownTimeout <= 0 {
 		errs = append(errs, fmt.Errorf("%w: SHUTDOWN_TIMEOUT must be positive, got %s",
 			ErrInvalidConfig, c.ShutdownTimeout))
@@ -139,6 +161,42 @@ func (c Config) Validate() error {
 	}
 
 	return errors.Join(errs...)
+}
+
+// validateDatabaseURL checks that DATABASE_URL is a Postgres URL, and that it
+// is not one that would put the database password on the wire in clear.
+//
+// It returns a slice so that [Config.Validate] can report a bad database URL
+// alongside every other problem. Configuration errors arrive in batches — one
+// bad deploy, several wrong variables — and surfacing them one restart at a
+// time wastes the operator's evening.
+func (c Config) validateDatabaseURL() []error {
+	if c.DatabaseURL == "" {
+		return []error{fmt.Errorf("%w: DATABASE_URL is empty", ErrInvalidConfig)}
+	}
+
+	u, err := url.Parse(c.DatabaseURL)
+	if err != nil {
+		return []error{fmt.Errorf("%w: DATABASE_URL is not a URL: %w", ErrInvalidConfig, err)}
+	}
+
+	// pgx accepts both spellings; anything else is a different database, or a
+	// variable that was pasted into the wrong slot.
+	if u.Scheme != "postgres" && u.Scheme != "postgresql" {
+		return []error{fmt.Errorf("%w: DATABASE_URL scheme is %q, want postgres",
+			ErrInvalidConfig, u.Scheme)}
+	}
+
+	// sslmode=disable is right for a container on loopback and wrong everywhere
+	// else: it sends the password, and every row that follows, in clear. The
+	// check is here rather than in the pool because a process that would do
+	// this should not reach the point of dialling.
+	if c.IsProduction() && u.Query().Get("sslmode") == "disable" {
+		return []error{fmt.Errorf("%w: DATABASE_URL has sslmode=disable in production",
+			ErrInsecureHosts)}
+	}
+
+	return nil
 }
 
 // PageHostFor returns the hostname a page is served from.

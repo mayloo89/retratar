@@ -1,0 +1,26 @@
+# Postgres for local development and for running the store tests.
+#
+# Production Postgres is not managed here; see deploy/. This file exists so that
+# `make db-up` gives you the same major version CI uses, and nothing else.
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: retratar
+      POSTGRES_PASSWORD: retratar
+      POSTGRES_DB: retratar
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      # Postgres 18 images want the mount one level up, at /var/lib/postgresql,
+      # and put the data in a version-named subdirectory of it. Mounting
+      # .../data directly makes the container refuse to start.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U retratar -d retratar"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:

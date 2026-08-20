@@ -49,8 +49,32 @@ tidy: ## Tidy and verify modules
 	$(GO) mod tidy
 	$(GO) mod verify
 
+.PHONY: db-up
+db-up: ## Start the local Postgres and wait for it
+	docker compose up -d --wait postgres
+
+.PHONY: db-down
+db-down: ## Stop the local Postgres, keeping its data
+	docker compose stop postgres
+
+.PHONY: db-reset
+db-reset: ## Destroy the local Postgres and its data
+	docker compose down -v
+
+.PHONY: migrate
+migrate: ## Apply pending migrations to $$DATABASE_URL
+	$(GO) run ./cmd/server -migrate
+
+.PHONY: sqlc
+sqlc: ## Regenerate internal/store from the queries and the migrations
+	$(GO) tool sqlc generate
+
+.PHONY: sqlc-check
+sqlc-check: ## Fail if internal/store is out of date with the SQL
+	$(GO) tool sqlc diff
+
 .PHONY: check
-check: tidy fmt lint test vuln ## Everything CI runs
+check: tidy fmt lint sqlc-check test vuln ## Everything CI runs
 
 .PHONY: clean
 clean: ## Remove build and coverage output
