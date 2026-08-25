@@ -18,6 +18,15 @@ type LoginToken struct {
 	ConsumedAt pgtype.Timestamptz
 }
 
+type Session struct {
+	ID          uuid.UUID
+	SessionHash []byte
+	UserID      uuid.UUID
+	CreatedAt   pgtype.Timestamptz
+	ExpiresAt   pgtype.Timestamptz
+	RevokedAt   pgtype.Timestamptz
+}
+
 type User struct {
 	ID        uuid.UUID
 	Email     string

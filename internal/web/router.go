@@ -17,6 +17,9 @@ import (
 	"strings"
 
 	"github.com/mayloo89/retratar/internal/config"
+	"github.com/mayloo89/retratar/internal/mail"
+	"github.com/mayloo89/retratar/internal/session"
+	"github.com/mayloo89/retratar/internal/user"
 )
 
 // Server holds everything the HTTP layer needs. Dependencies are struct fields
@@ -24,12 +27,16 @@ import (
 type Server struct {
 	Config config.Config
 	Logger *slog.Logger
+
+	Users    *user.Service
+	Sessions *session.Service
+	Mailer   mail.Sender
 }
 
 // Handler builds the root handler: shared middleware, then a split by hostname
 // into the two surfaces.
 func (s *Server) Handler() http.Handler {
-	app := Chain(s.appRoutes(), AppCSP)
+	app := Chain(s.appRoutes(), AppCSP, CurrentUser(s.Sessions, s.Users))
 	pages := Chain(s.pageRoutes(), PagesCSP)
 
 	root := s.hostSplit(app, pages)
@@ -78,6 +85,11 @@ func (s *Server) appRoutes() http.Handler {
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 	mux.HandleFunc("GET /internal/tls-check", s.handleTLSCheck)
 	mux.HandleFunc("GET /{$}", s.handleAppHome)
+	mux.HandleFunc("GET /login", s.handleLoginForm)
+	mux.HandleFunc("POST /login", s.handleLoginRequest)
+	mux.HandleFunc("GET /login/{token}", s.handleLoginConfirm)
+	mux.HandleFunc("POST /login/{token}", s.handleLoginComplete)
+	mux.HandleFunc("POST /logout", s.handleLogout)
 	return mux
 }
 
@@ -134,8 +146,12 @@ func (s *Server) handleTLSCheck(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "unknown domain", http.StatusForbidden)
 }
 
-func (s *Server) handleAppHome(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleAppHome(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	if u, ok := UserFrom(r.Context()); ok {
+		_, _ = w.Write([]byte("retratar app: " + u.Email + "\n"))
+		return
+	}
 	_, _ = w.Write([]byte("retratar app\n"))
 }
 
