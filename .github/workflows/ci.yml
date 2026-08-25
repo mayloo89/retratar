@@ -21,6 +21,25 @@ jobs:
   build:
     name: Build & test
     runs-on: ubuntu-latest
+
+    # The database tests run against a real Postgres, not a fake. Deliberately a
+    # service on the existing job instead of a job of its own: the branch ruleset
+    # binds required checks by exact job name, so a new job silently stops being
+    # required until somebody remembers to edit the protection.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: retratar_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+
     steps:
       - uses: actions/checkout@v7
 
@@ -40,7 +59,16 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      # Without this, generated code edited by hand drifts from the SQL it
+      # claims to come from, and every review reads a lie.
+      - name: Verify sqlc output is current
+        run: go tool sqlc diff
+
+      # CI is set by GitHub, and the test helper turns a missing DATABASE_URL
+      # into a failure when it is. A skipped database test reads as a pass.
       - name: Test
+        env:
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/retratar_test?sslmode=disable
         run: go test -race -shuffle=on -coverprofile=coverage.out -covermode=atomic ./...
 
       # Printed rather than gated. A hard floor on a young codebase pushes you

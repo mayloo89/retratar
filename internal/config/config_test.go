@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -37,6 +38,7 @@ func TestLoadReadsEnvironment(t *testing.T) {
 		"ADDR":             ":9000",
 		"APP_HOST":         "retratar.com.ar",
 		"PAGES_HOST":       "retrat.ar",
+		"DATABASE_URL":     "postgres://u:p@db.internal:5432/retratar",
 		"SHUTDOWN_TIMEOUT": "30s",
 	}))
 	if err != nil {
@@ -72,6 +74,7 @@ func TestValidateRejectsSharedRegistrableDomain(t *testing.T) {
 	base := config.Config{
 		Env:             config.EnvProduction,
 		Addr:            ":8080",
+		DatabaseURL:     "postgres://u:p@db.internal:5432/retratar",
 		ShutdownTimeout: time.Second,
 	}
 
@@ -136,6 +139,7 @@ func TestValidateRejectsPublicAdminAddr(t *testing.T) {
 		Addr:            ":8080",
 		AppHost:         "retratar.com.ar",
 		PagesHost:       "retrat.ar",
+		DatabaseURL:     "postgres://u:p@db.internal:5432/retratar",
 		ShutdownTimeout: time.Second,
 	}
 
@@ -204,5 +208,95 @@ func TestBaseURLSchemeFollowsEnvironment(t *testing.T) {
 				t.Errorf("BaseURL() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestValidateDatabaseURL(t *testing.T) {
+	t.Parallel()
+
+	base := config.Config{
+		Addr:            ":8080",
+		AppHost:         "retratar.com.ar",
+		PagesHost:       "retrat.ar",
+		AdminAddr:       "127.0.0.1:8081",
+		ShutdownTimeout: time.Second,
+	}
+
+	tests := []struct {
+		name    string
+		env     config.Environment
+		url     string
+		wantErr error
+	}{
+		{
+			name: "postgres scheme",
+			env:  config.EnvProduction,
+			url:  "postgres://u:p@db.internal:5432/retratar",
+		},
+		{
+			name: "postgresql scheme",
+			env:  config.EnvProduction,
+			url:  "postgresql://u:p@db.internal:5432/retratar",
+		},
+		{
+			name:    "empty",
+			env:     config.EnvProduction,
+			url:     "",
+			wantErr: config.ErrInvalidConfig,
+		},
+		{
+			name:    "another database entirely",
+			env:     config.EnvProduction,
+			url:     "mysql://u:p@db.internal:3306/retratar",
+			wantErr: config.ErrInvalidConfig,
+		},
+		{
+			// The whole point of the check: credentials and every row that
+			// follows would cross the network in clear.
+			name:    "plaintext in production",
+			env:     config.EnvProduction,
+			url:     "postgres://u:p@db.internal:5432/retratar?sslmode=disable",
+			wantErr: config.ErrInsecureHosts,
+		},
+		{
+			// The same URL is how everyone's laptop talks to the container in
+			// compose.yaml, so development must accept it.
+			name: "plaintext in development",
+			env:  config.EnvDevelopment,
+			url:  "postgres://u:p@127.0.0.1:5432/retratar?sslmode=disable",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := base
+			cfg.Env = tt.env
+			cfg.DatabaseURL = tt.url
+
+			err := cfg.Validate()
+			if tt.wantErr == nil {
+				if err != nil {
+					t.Fatalf("Validate() error = %v, want nil", err)
+				}
+				return
+			}
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("Validate() error = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestLoadDefaultsToTheComposeDatabase(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := config.Load(env(nil))
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if !strings.HasPrefix(cfg.DatabaseURL, "postgres://") {
+		t.Errorf("DatabaseURL = %q, want a postgres URL", cfg.DatabaseURL)
 	}
 }

@@ -1,0 +1,25 @@
+version: "2"
+sql:
+  - engine: postgresql
+    # The migrations are the schema. There is no second copy to drift from them:
+    # sqlc reads the same files goose applies, so a query that does not match the
+    # deployed schema fails at generation time rather than at runtime.
+    schema: migrations
+    queries: internal/store/queries
+    gen:
+      go:
+        package: store
+        out: internal/store
+        sql_package: pgx/v5
+
+        # Nullable columns become *string rather than pgtype.Text. The zero
+        # value of pgtype.Text is a valid empty string, which makes "absent" and
+        # "empty" look identical at a glance; a nil pointer does not.
+        emit_pointers_for_null_types: true
+
+        overrides:
+          # Without this every caller of a generated type would have to import
+          # pgx to name an ID, which defeats the point of a feature package
+          # owning its own types.
+          - db_type: "uuid"
+            go_type: "github.com/google/uuid.UUID"

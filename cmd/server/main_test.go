@@ -23,7 +23,7 @@ func TestRunStartsAndShutsDown(t *testing.T) {
 	})
 
 	done := make(chan error, 1)
-	go func() { done <- run(ctx, getenv, io.Discard) }()
+	go func() { done <- run(ctx, nil, getenv, io.Discard) }()
 
 	// Give both listeners time to bind before asking them to stop.
 	time.Sleep(100 * time.Millisecond)
@@ -48,7 +48,7 @@ func TestRunRejectsBadConfig(t *testing.T) {
 		"PAGES_HOST": "sebas.retrat.ar",
 	})
 
-	err := run(t.Context(), getenv, io.Discard)
+	err := run(t.Context(), nil, getenv, io.Discard)
 	if !errors.Is(err, config.ErrInsecureHosts) {
 		t.Fatalf("run() error = %v, want ErrInsecureHosts", err)
 	}
@@ -59,7 +59,7 @@ func TestRunRejectsPublicAdminAddr(t *testing.T) {
 
 	getenv := envFunc(map[string]string{"ADMIN_ADDR": "0.0.0.0:8081"})
 
-	err := run(t.Context(), getenv, io.Discard)
+	err := run(t.Context(), nil, getenv, io.Discard)
 	if !errors.Is(err, config.ErrInsecureHosts) {
 		t.Fatalf("run() error = %v, want ErrInsecureHosts", err)
 	}

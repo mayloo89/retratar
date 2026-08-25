@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"log/slog"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/mayloo89/retratar/internal/buildinfo"
 	"github.com/mayloo89/retratar/internal/config"
+	"github.com/mayloo89/retratar/internal/store"
 	"github.com/mayloo89/retratar/internal/web"
 )
 
@@ -24,7 +26,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := run(ctx, os.Getenv, os.Stdout); err != nil {
+	if err := run(ctx, os.Args[1:], os.Getenv, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
 		os.Exit(1)
 	}
@@ -33,13 +35,28 @@ func main() {
 // run holds the whole program. Every dependency on the outside world arrives
 // as a parameter and every exit path returns an error instead of calling
 // os.Exit, so a test can run the real startup path against a fake environment.
-func run(ctx context.Context, getenv config.Getenv, stdout io.Writer) error {
+func run(ctx context.Context, args []string, getenv config.Getenv, stdout io.Writer) error {
+	// Flags are parsed here rather than in main so that a test can drive the
+	// real startup path with a chosen argument list. args excludes the program
+	// name; main passes os.Args[1:].
+	flags := flag.NewFlagSet("server", flag.ContinueOnError)
+	flags.SetOutput(stdout)
+	migrate := flags.Bool("migrate", false, "apply pending database migrations and exit")
+	if err := flags.Parse(args); err != nil {
+		return fmt.Errorf("parse flags: %w", err)
+	}
+
 	cfg, err := config.Load(getenv)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
 
 	logger := newLogger(cfg, stdout)
+
+	if *migrate {
+		return applyMigrations(ctx, cfg, logger)
+	}
+
 	logger.Info("starting",
 		slog.String("build", buildinfo.Get().String()),
 		slog.String("env", string(cfg.Env)),
@@ -60,6 +77,23 @@ func run(ctx context.Context, getenv config.Getenv, stdout io.Writer) error {
 	}
 
 	return serve(ctx, logger, cfg.ShutdownTimeout, servers...)
+}
+
+// applyMigrations brings the schema up to date and returns. It is the whole of
+// the -migrate subcommand.
+//
+// Serving and migrating are separate runs of the binary on purpose. A deploy
+// migrates, then starts; a restart on its own never changes the schema, so a
+// process that comes back up after a crash cannot rewrite the database while
+// nobody is watching.
+func applyMigrations(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
+	pool, err := store.Open(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return fmt.Errorf("open database: %w", err)
+	}
+	defer pool.Close()
+
+	return store.Migrate(ctx, pool, logger)
 }
 
 // newHTTPServer applies the timeouts every server needs. An unbounded read or
