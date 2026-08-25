@@ -120,6 +120,21 @@ func Recover(logger *slog.Logger) Middleware {
 	}
 }
 
+// PrivateCache marks every app-surface response as varying by the session
+// cookie and not cacheable by a shared cache.
+//
+// Without this, a page rendered for one signed-in owner (see handleAppHome)
+// could be served back out of a proxy or CDN cache to a different visitor
+// who never had that session. The app surface has no content worth a shared
+// cache anyway, so no-store costs nothing.
+func PrivateCache(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "private, no-store")
+		w.Header().Add("Vary", "Cookie")
+		next.ServeHTTP(w, r)
+	})
+}
+
 // SecurityHeaders sets response headers that are identical on both surfaces.
 // The Content-Security-Policy differs per surface and is set by the surface's
 // own middleware; see [AppCSP] and [PagesCSP].

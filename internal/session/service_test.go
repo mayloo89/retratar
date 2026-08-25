@@ -151,6 +151,29 @@ func TestLookupRejectsRubbish(t *testing.T) {
 	}
 }
 
+// TestRevokedBeforeCreatedIsRejectedByTheDatabase guards the invariant behind
+// sessions_revoked_after_created_at: nothing above the schema can currently
+// produce this row (RevokeSession always sets revoked_at to now()), so the
+// only way to prove the constraint still exists is to try to insert around
+// the service layer entirely.
+func TestRevokedBeforeCreatedIsRejectedByTheDatabase(t *testing.T) {
+	t.Parallel()
+
+	pool := testdb.New(t)
+	u := newAccount(t, pool)
+
+	_, err := pool.Exec(t.Context(), `
+		INSERT INTO sessions (session_hash, user_id, created_at, expires_at, revoked_at)
+		VALUES ($1, $2, now(), now() + interval '1 hour', now() - interval '1 hour')
+	`, []byte("deliberately-bogus-hash"), u.ID)
+	if err == nil {
+		t.Fatal("insert with revoked_at before created_at succeeded, want a constraint violation")
+	}
+	if !strings.Contains(err.Error(), "sessions_revoked_after_created_at") {
+		t.Errorf("error = %v, want it to mention sessions_revoked_after_created_at", err)
+	}
+}
+
 // newAccount creates a real user row so sessions.user_id has something valid
 // to reference; a session cannot exist for nobody.
 func newAccount(t *testing.T, pool *pgxpool.Pool) user.User {

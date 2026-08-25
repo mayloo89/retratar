@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
@@ -150,6 +151,36 @@ func TestHSTSOnlyInProduction(t *testing.T) {
 
 	if got := resp.Header.Get("Strict-Transport-Security"); got != "" {
 		t.Errorf("Strict-Transport-Security = %q in development, want empty", got)
+	}
+}
+
+// TestAppSurfaceIsPrivateCache guards against a caching proxy serving one
+// owner's authenticated page (see handleAppHome) to a different visitor.
+func TestAppSurfaceIsPrivateCache(t *testing.T) {
+	h := testServer(t).Handler()
+
+	resp := get(t, h, "retratar.com.ar", "/")
+	defer resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
+
+	if got := resp.Header.Get("Cache-Control"); got != "private, no-store" {
+		t.Errorf("Cache-Control = %q, want %q", got, "private, no-store")
+	}
+	if got := resp.Header.Values("Vary"); !slices.Contains(got, "Cookie") {
+		t.Errorf("Vary = %v, want it to contain %q", got, "Cookie")
+	}
+}
+
+// TestPagesSurfaceHasNoPrivateCacheHeaders documents that the caching
+// constraint is app-only: rendered public pages have no per-visitor state and
+// are fine to cache.
+func TestPagesSurfaceHasNoPrivateCacheHeaders(t *testing.T) {
+	h := testServer(t).Handler()
+
+	resp := get(t, h, "sebas.retrat.ar", "/")
+	defer resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
+
+	if got := resp.Header.Get("Cache-Control"); got != "" {
+		t.Errorf("Cache-Control = %q, want empty", got)
 	}
 }
 

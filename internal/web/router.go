@@ -36,7 +36,7 @@ type Server struct {
 // Handler builds the root handler: shared middleware, then a split by hostname
 // into the two surfaces.
 func (s *Server) Handler() http.Handler {
-	app := Chain(s.appRoutes(), AppCSP, CurrentUser(s.Sessions, s.Users))
+	app := Chain(s.appRoutes(), AppCSP, PrivateCache, CurrentUser(s.Sessions, s.Users))
 	pages := Chain(s.pageRoutes(), PagesCSP)
 
 	root := s.hostSplit(app, pages)
