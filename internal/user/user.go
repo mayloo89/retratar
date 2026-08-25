@@ -164,6 +164,20 @@ func (s *Service) CompleteLogin(ctx context.Context, raw string) (User, error) {
 	return fromRow(row), nil
 }
 
+// GetByID returns the account a session belongs to. It is how the web layer
+// turns a resolved session into the account a request runs as, without
+// reaching into store.User itself.
+func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (User, error) {
+	row, err := s.queries.GetUserByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return User{}, ErrUserNotFound
+		}
+		return User{}, fmt.Errorf("get user by id: %w", err)
+	}
+	return fromRow(row), nil
+}
+
 // NormaliseEmail folds an address to the single form used as the login
 // identity, or reports that it is not usable.
 //

@@ -8,6 +8,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/mayloo89/retratar/internal/testdb"
@@ -279,6 +280,34 @@ func TestCompleteLoginRejectsRubbish(t *testing.T) {
 		if _, err := svc.CompleteLogin(t.Context(), token); !errors.Is(err, user.ErrInvalidToken) {
 			t.Errorf("CompleteLogin(%.20q) error = %v, want ErrInvalidToken", token, err)
 		}
+	}
+}
+
+func TestGetByIDReturnsTheAccount(t *testing.T) {
+	t.Parallel()
+
+	pool := testdb.New(t)
+	svc := user.NewService(pool)
+
+	created := login(t, svc, "ana@example.com")
+
+	got, err := svc.GetByID(t.Context(), created.ID)
+	if err != nil {
+		t.Fatalf("GetByID() error = %v, want nil", err)
+	}
+	if got.Email != created.Email {
+		t.Errorf("Email = %q, want %q", got.Email, created.Email)
+	}
+}
+
+func TestGetByIDRejectsUnknownID(t *testing.T) {
+	t.Parallel()
+
+	pool := testdb.New(t)
+	svc := user.NewService(pool)
+
+	if _, err := svc.GetByID(t.Context(), uuid.New()); !errors.Is(err, user.ErrUserNotFound) {
+		t.Fatalf("GetByID() error = %v, want ErrUserNotFound", err)
 	}
 }
 
