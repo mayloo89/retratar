@@ -20,10 +20,14 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/mayloo89/retratar/internal/store"
 )
+
+// uniqueViolation is the Postgres error code for a unique-index conflict.
+const uniqueViolation = "23505"
 
 // TokenTTL is how long a magic link stays usable.
 //
@@ -176,6 +180,49 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (User, error) {
 		return User{}, fmt.Errorf("get user by id: %w", err)
 	}
 	return fromRow(row), nil
+}
+
+// GetByHandle returns the account whose page lives at handle. It is how the
+// pages surface turns a resolved hostname into the account it renders.
+func (s *Service) GetByHandle(ctx context.Context, handle string) (User, error) {
+	row, err := s.queries.GetUserByHandle(ctx, handle)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return User{}, ErrUserNotFound
+		}
+		return User{}, fmt.Errorf("get user by handle: %w", err)
+	}
+	return fromRow(row), nil
+}
+
+// ClaimHandle gives an account its handle, moving it from
+// [StatePendingHandle] to [StateActive]. A handle is claimed once: an account
+// that already has one gets [ErrHandleAlreadySet], and a handle another
+// account already holds gets [ErrHandleTaken] — the unique index on
+// lower(handle) is what actually decides the second case, this only
+// translates the conflict it raises.
+func (s *Service) ClaimHandle(ctx context.Context, id uuid.UUID, handle string) (User, error) {
+	if !ValidHandle(handle) {
+		return User{}, ErrInvalidHandle
+	}
+
+	row, err := s.queries.ClaimHandle(ctx, store.ClaimHandleParams{ID: id, Handle: &handle})
+	if err != nil {
+		if isUniqueViolation(err) {
+			return User{}, ErrHandleTaken
+		}
+		if errors.Is(err, pgx.ErrNoRows) {
+			return User{}, ErrHandleAlreadySet
+		}
+		return User{}, fmt.Errorf("claim handle: %w", err)
+	}
+	return fromRow(row), nil
+}
+
+// isUniqueViolation reports whether err is a Postgres unique-index conflict.
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == uniqueViolation
 }
 
 // NormaliseEmail folds an address to the single form used as the login

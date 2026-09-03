@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>retratar</title>
+</head>
+<body>
+<h1>Your page</h1>
+<p><a href="https://{{.Handle}}.retrat.ar">https://{{.Handle}}.retrat.ar</a></p>
+
+<h2>Mood</h2>
+{{if .HasMood}}
+<p>Current: {{.MoodLabel}}{{with .MoodNote}} — {{.}}{{end}}</p>
+{{else}}
+<p>No mood set yet.</p>
+{{end}}
+<form method="post" action="/mood">
+<label for="mood_key">How are you</label>
+<select id="mood_key" name="mood_key" required>
+{{range .MoodOptions}}<option value="{{.Key}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>
+{{end}}</select>
+<label for="note">Note (optional, 60 characters)</label>
+<input type="text" id="note" name="note" maxlength="60" value="{{.MoodNote}}">
+<button type="submit">Update mood</button>
+</form>
+{{with .Error}}<p role="alert">{{.}}</p>{{end}}
+
+<form method="post" action="/logout">
+<button type="submit">Sign out</button>
+</form>
+</body>
+</html>

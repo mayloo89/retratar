@@ -11,6 +11,57 @@ import (
 	"github.com/google/uuid"
 )
 
+const claimHandle = `-- name: ClaimHandle :one
+UPDATE users
+SET handle = $1, state = 'active'
+WHERE id = $2 AND handle IS NULL
+RETURNING id, email, handle, state, tier, locale, created_at
+`
+
+type ClaimHandleParams struct {
+	Handle *string
+	ID     uuid.UUID
+}
+
+// The WHERE guards against re-claiming: once handle is set, this matches no
+// row and the caller sees pgx.ErrNoRows, the same shape ConsumeLoginToken
+// already produces for "this cannot proceed." A second, different user
+// claiming the same handle instead hits users_handle_key and fails as a
+// unique violation, which the caller distinguishes from "already set."
+func (q *Queries) ClaimHandle(ctx context.Context, arg ClaimHandleParams) (User, error) {
+	row := q.db.QueryRow(ctx, claimHandle, arg.Handle, arg.ID)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Handle,
+		&i.State,
+		&i.Tier,
+		&i.Locale,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getUserByHandle = `-- name: GetUserByHandle :one
+SELECT id, email, handle, state, tier, locale, created_at FROM users WHERE lower(handle) = lower($1)
+`
+
+func (q *Queries) GetUserByHandle(ctx context.Context, handle string) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByHandle, handle)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Handle,
+		&i.State,
+		&i.Tier,
+		&i.Locale,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getUserByID = `-- name: GetUserByID :one
 SELECT id, email, handle, state, tier, locale, created_at FROM users WHERE id = $1
 `

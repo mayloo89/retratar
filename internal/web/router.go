@@ -18,6 +18,7 @@ import (
 
 	"github.com/mayloo89/retratar/internal/config"
 	"github.com/mayloo89/retratar/internal/mail"
+	"github.com/mayloo89/retratar/internal/mood"
 	"github.com/mayloo89/retratar/internal/session"
 	"github.com/mayloo89/retratar/internal/user"
 )
@@ -30,6 +31,7 @@ type Server struct {
 
 	Users    *user.Service
 	Sessions *session.Service
+	Moods    *mood.Service
 	Mailer   mail.Sender
 }
 
@@ -90,6 +92,9 @@ func (s *Server) appRoutes() http.Handler {
 	mux.HandleFunc("GET /login/{token}", s.handleLoginConfirm)
 	mux.HandleFunc("POST /login/{token}", s.handleLoginComplete)
 	mux.HandleFunc("POST /logout", s.handleLogout)
+	mux.HandleFunc("GET /handle", s.handleClaimForm)
+	mux.HandleFunc("POST /handle", s.handleClaimSubmit)
+	mux.HandleFunc("POST /mood", s.handleMoodSubmit)
 	return mux
 }
 
@@ -98,6 +103,7 @@ func (s *Server) appRoutes() http.Handler {
 func (s *Server) pageRoutes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.handlePage)
+	mux.HandleFunc("GET /theme.css", s.handleTheme)
 	return mux
 }
 
@@ -144,25 +150,6 @@ func (s *Server) handleTLSCheck(w http.ResponseWriter, r *http.Request) {
 
 	s.Logger.WarnContext(r.Context(), "on-demand TLS refused", slog.String("domain", domain))
 	http.Error(w, "unknown domain", http.StatusForbidden)
-}
-
-func (s *Server) handleAppHome(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	if u, ok := UserFrom(r.Context()); ok {
-		_, _ = w.Write([]byte("retratar app: " + u.Email + "\n"))
-		return
-	}
-	_, _ = w.Write([]byte("retratar app\n"))
-}
-
-func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
-	handle, ok := HandleFrom(r.Context())
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	_, _ = w.Write([]byte("page: " + handle + "\n"))
 }
 
 // stripPort removes any port from a host[:port] string. net.SplitHostPort is
