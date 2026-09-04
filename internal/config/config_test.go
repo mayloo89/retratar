@@ -40,6 +40,11 @@ func TestLoadReadsEnvironment(t *testing.T) {
 		"PAGES_HOST":       "retrat.ar",
 		"DATABASE_URL":     "postgres://u:p@db.internal:5432/retratar",
 		"SHUTDOWN_TIMEOUT": "30s",
+		"SMTP_HOST":        "smtp.postmarkapp.com",
+		"SMTP_PORT":        "587",
+		"SMTP_USERNAME":    "token",
+		"SMTP_PASSWORD":    "token",
+		"MAIL_FROM":        "noreply@retratar.com.ar",
 	}))
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
@@ -75,6 +80,11 @@ func TestValidateRejectsSharedRegistrableDomain(t *testing.T) {
 		Env:             config.EnvProduction,
 		Addr:            ":8080",
 		DatabaseURL:     "postgres://u:p@db.internal:5432/retratar",
+		SMTPHost:        "smtp.postmarkapp.com",
+		SMTPPort:        "587",
+		SMTPUsername:    "token",
+		SMTPPassword:    "token",
+		MailFrom:        "noreply@retratar.com.ar",
 		ShutdownTimeout: time.Second,
 	}
 
@@ -140,6 +150,11 @@ func TestValidateRejectsPublicAdminAddr(t *testing.T) {
 		AppHost:         "retratar.com.ar",
 		PagesHost:       "retrat.ar",
 		DatabaseURL:     "postgres://u:p@db.internal:5432/retratar",
+		SMTPHost:        "smtp.postmarkapp.com",
+		SMTPPort:        "587",
+		SMTPUsername:    "token",
+		SMTPPassword:    "token",
+		MailFrom:        "noreply@retratar.com.ar",
 		ShutdownTimeout: time.Second,
 	}
 
@@ -175,6 +190,64 @@ func TestValidateRejectsPublicAdminAddr(t *testing.T) {
 				t.Fatalf("Validate() error = %v, want %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+// TestValidateRequiresSMTPInProduction guards the login flow itself: without
+// a relay configured, a magic link has nowhere to go and nobody can sign in.
+func TestValidateRequiresSMTPInProduction(t *testing.T) {
+	t.Parallel()
+
+	complete := config.Config{
+		Env:             config.EnvProduction,
+		Addr:            ":8080",
+		AppHost:         "retratar.com.ar",
+		PagesHost:       "retrat.ar",
+		DatabaseURL:     "postgres://u:p@db.internal:5432/retratar",
+		AdminAddr:       "127.0.0.1:8081",
+		SMTPHost:        "smtp.postmarkapp.com",
+		SMTPPort:        "587",
+		SMTPUsername:    "token",
+		SMTPPassword:    "token",
+		MailFrom:        "noreply@retratar.com.ar",
+		ShutdownTimeout: time.Second,
+	}
+
+	if err := complete.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v, want nil", err)
+	}
+
+	tests := []struct {
+		name string
+		zero func(*config.Config)
+	}{
+		{"missing host", func(c *config.Config) { c.SMTPHost = "" }},
+		{"missing port", func(c *config.Config) { c.SMTPPort = "" }},
+		{"missing username", func(c *config.Config) { c.SMTPUsername = "" }},
+		{"missing password", func(c *config.Config) { c.SMTPPassword = "" }},
+		{"missing mail from", func(c *config.Config) { c.MailFrom = "" }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := complete
+			tt.zero(&cfg)
+
+			err := cfg.Validate()
+			if !errors.Is(err, config.ErrInvalidConfig) {
+				t.Fatalf("Validate() error = %v, want ErrInvalidConfig", err)
+			}
+		})
+	}
+
+	// Development never requires a relay: mail is logged, not sent.
+	dev := complete
+	dev.Env = config.EnvDevelopment
+	dev.SMTPHost, dev.SMTPPort, dev.SMTPUsername, dev.SMTPPassword, dev.MailFrom = "", "", "", "", ""
+	if err := dev.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v, want nil in development", err)
 	}
 }
 
@@ -219,6 +292,11 @@ func TestValidateDatabaseURL(t *testing.T) {
 		AppHost:         "retratar.com.ar",
 		PagesHost:       "retrat.ar",
 		AdminAddr:       "127.0.0.1:8081",
+		SMTPHost:        "smtp.postmarkapp.com",
+		SMTPPort:        "587",
+		SMTPUsername:    "token",
+		SMTPPassword:    "token",
+		MailFrom:        "noreply@retratar.com.ar",
 		ShutdownTimeout: time.Second,
 	}
 

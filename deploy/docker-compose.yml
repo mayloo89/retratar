@@ -1,0 +1,65 @@
+# Production deploy: retratar's own Postgres + the app, both in Docker.
+#
+# Runs alongside the Pi's other Docker-based services (see circl.unlug.ar's
+# own compose stack) without touching YunoHost's sudo-restricted native
+# Postgres at all — that restriction is exactly why this exists instead of a
+# bare systemd binary against a native `postgresql` role. See
+# docs/decisions/0004-deploy-behind-existing-yunohost-nginx.md.
+#
+# The app container uses `network_mode: host` on purpose: it lets
+# DATABASE_URL stay a literal 127.0.0.1 connection, which is what
+# config.Config.Validate requires for sslmode=disable in production — the
+# same rule that already governs the local dev Postgres in ../compose.yaml.
+# A container-to-container bridge connection would need its own TLS story
+# for no real security gain on a single host; host networking sidesteps that
+# entirely. It also means nginx's `proxy_pass http://127.0.0.1:8082` (see
+# ../deploy/nginx/*.conf) needs no changes — the app binds that address
+# directly, same as a bare binary would have.
+#
+# SETUP:
+#   1. On the Pi: git clone https://github.com/mayloo89/retratar.git, cd in.
+#   2. Copy deploy/retratar.env.example to deploy/retratar.env and fill it in
+#      (not committed — deploy/retratar.env is gitignored).
+#   3. Every command below needs --env-file deploy/retratar.env: that is what
+#      feeds POSTGRES_PASSWORD to this file's own ${POSTGRES_PASSWORD}
+#      interpolation. docker compose does not read it from deploy/retratar.env
+#      automatically just because the compose file lives next to it.
+#        docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env \
+#          up -d --build postgres
+#   4. Wait for postgres healthy, then run migrations once:
+#        docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env \
+#          run --rm app -migrate
+#   5. docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env \
+#        up -d --build app
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: retratar
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in deploy/retratar.env}
+      POSTGRES_DB: retratar
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U retratar -d retratar"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    network_mode: host
+    env_file: retratar.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
