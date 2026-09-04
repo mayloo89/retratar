@@ -31,6 +31,14 @@
 #          run --rm app -migrate
 #   5. docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env \
 #        up -d --build app
+#
+# `name:` below is not decoration. Compose otherwise derives the project name
+# from this file's parent directory — "deploy" — which collides with any
+# other project whose compose file also lives in a directory called `deploy`
+# (circl.unlug.ar's does, on this same Pi). Without an explicit name, `up`
+# here attaches to that project's containers as "orphans" and can create
+# volumes inside its namespace. Ask why before renaming or removing this.
+name: retratar
 
 services:
   postgres:
@@ -40,7 +48,10 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in deploy/retratar.env}
       POSTGRES_DB: retratar
     ports:
-      - "127.0.0.1:5432:5432"
+      # 5432 is already bound by the Pi's native postgresql@15-main (a
+      # separate, YunoHost-managed instance unrelated to this one) — 5433
+      # avoids that collision. DATABASE_URL in retratar.env must match.
+      - "127.0.0.1:5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql
     healthcheck:
