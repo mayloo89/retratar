@@ -37,10 +37,22 @@
 #      automatically just because the compose file lives next to it.
 #        docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env \
 #          up -d --build postgres
-#   5. Wait for postgres healthy, then run migrations once:
+#   5. Wait for postgres healthy, then turn TLS on. This is a one-time step
+#      per data volume — it persists in the volume itself, not in the
+#      container, and survives `down`/`up` as long as the `pgdata` volume
+#      isn't removed. See the comment on the postgres service's `command:`
+#      for why this can't just be a `-c` flag there instead.
+#        docker exec retratar-postgres-1 psql -U retratar -d retratar \
+#          -c "ALTER SYSTEM SET ssl = on;"
+#        docker exec retratar-postgres-1 psql -U retratar -d retratar \
+#          -c "ALTER SYSTEM SET ssl_cert_file = '/var/lib/postgresql/tls/server.crt';"
+#        docker exec retratar-postgres-1 psql -U retratar -d retratar \
+#          -c "ALTER SYSTEM SET ssl_key_file = '/var/lib/postgresql/tls/server.key';"
+#        docker restart retratar-postgres-1   # ssl needs a restart, not just reload
+#   6. Run migrations once:
 #        docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env \
 #          run --rm app -migrate
-#   6. docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env \
+#   7. docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env \
 #        up -d --build app
 #
 # `name:` below is not decoration. Compose otherwise derives the project name
@@ -75,6 +87,15 @@ services:
     # permissions Postgres insists on before handing off to the real
     # entrypoint, rather than requiring the host-side files to somehow
     # already have the container's internal UID.
+    #
+    # It does NOT also pass `-c ssl=on ...` here — the official entrypoint's
+    # already-initialized path re-execs itself twice (once to drop from root
+    # to the postgres user, once to skip re-running initdb) and those `-c`
+    # flags do not survive that chain: `pg_settings.source` for `ssl` came
+    # back `default`, not `command line`, after starting this way. What does
+    # persist is `ALTER SYSTEM`, which writes into the data volume itself —
+    # see the one-time setup step below — so this command only needs to get
+    # the cert files in place before the ordinary entrypoint runs.
     command: >
       sh -c "
         mkdir -p /var/lib/postgresql/tls &&
@@ -82,9 +103,6 @@ services:
         chmod 600 /var/lib/postgresql/tls/server.key &&
         chown postgres:postgres /var/lib/postgresql/tls/server.crt /var/lib/postgresql/tls/server.key &&
         exec docker-entrypoint.sh postgres
-          -c ssl=on
-          -c ssl_cert_file=/var/lib/postgresql/tls/server.crt
-          -c ssl_key_file=/var/lib/postgresql/tls/server.key
       "
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U retratar -d retratar"]
