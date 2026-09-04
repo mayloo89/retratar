@@ -95,6 +95,9 @@ func TestClaimHandleSubmit_AlreadySetRedirectsHome(t *testing.T) {
 	if resp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("status = %d, want 303 (already has a handle)", resp.StatusCode)
 	}
+	if got := resp.Header.Get("Location"); got != "/" {
+		t.Errorf("Location = %q, want %q", got, "/")
+	}
 }
 
 func TestClaimHandleForm_ActiveAccountRedirectsHome(t *testing.T) {
@@ -110,5 +113,8 @@ func TestClaimHandleForm_ActiveAccountRedirectsHome(t *testing.T) {
 	resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
 	if resp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("status = %d, want 303 (nothing left to claim)", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Location"); got != "/" {
+		t.Errorf("Location = %q, want %q", got, "/")
 	}
 }

@@ -19,7 +19,10 @@ CREATE TABLE moods (
 CREATE TABLE mood_history (
     id       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id  uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    mood_key text NOT NULL,
+    mood_key text NOT NULL CHECK (mood_key IN (
+        'feliz', 'triste', 'tranquilo', 'ansioso', 'enamorado', 'cansado',
+        'enojado', 'aburrido', 'inspirado', 'nostalgico', 'fiesta', 'perdido'
+    )),
     note     text,
     at       timestamptz NOT NULL DEFAULT now()
 );
