@@ -65,6 +65,13 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
+    # The Dockerfile's TARGETARCH/TARGETOS args only auto-populate from
+    # BuildKit's platform detection when a target platform is actually given
+    # — otherwise they silently fall back to the Dockerfile's own amd64
+    # default, producing a binary the Pi's arm64 kernel refuses to exec.
+    # Pin it explicitly rather than rely on the build environment guessing
+    # right.
+    platform: linux/arm64
     network_mode: host
     env_file: retratar.env
     depends_on:
