@@ -65,12 +65,14 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
-    # The Dockerfile's TARGETARCH/TARGETOS args only auto-populate from
-    # BuildKit's platform detection when a target platform is actually given
-    # — otherwise they silently fall back to the Dockerfile's own amd64
-    # default, producing a binary the Pi's arm64 kernel refuses to exec.
-    # Pin it explicitly rather than rely on the build environment guessing
-    # right.
+      # The Dockerfile gives TARGETARCH a default (`ARG TARGETARCH=amd64`)
+      # for a plain `docker build` with no platform context. That default
+      # takes precedence over BuildKit's automatic platform-arg injection —
+      # `platform:` alone pulls an arm64 base image but does not change
+      # what GOARCH the RUN line compiles for, and produces a binary the
+      # Pi's kernel refuses to exec. Pass it explicitly instead.
+      args:
+        TARGETARCH: arm64
     platform: linux/arm64
     network_mode: host
     env_file: retratar.env
