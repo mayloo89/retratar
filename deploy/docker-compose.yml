@@ -6,30 +6,41 @@
 # bare systemd binary against a native `postgresql` role. See
 # docs/decisions/0004-deploy-behind-existing-yunohost-nginx.md.
 #
-# The app container uses `network_mode: host` on purpose: it lets
-# DATABASE_URL stay a literal 127.0.0.1 connection, which is what
-# config.Config.Validate requires for sslmode=disable in production — the
-# same rule that already governs the local dev Postgres in ../compose.yaml.
-# A container-to-container bridge connection would need its own TLS story
-# for no real security gain on a single host; host networking sidesteps that
-# entirely. It also means nginx's `proxy_pass http://127.0.0.1:8082` (see
-# ../deploy/nginx/*.conf) needs no changes — the app binds that address
-# directly, same as a bare binary would have.
+# The app container uses `network_mode: host`: it lets DATABASE_URL stay a
+# literal 127.0.0.1 connection, so nginx's `proxy_pass http://127.0.0.1:8082`
+# (see ../deploy/nginx/*.conf) needs no changes — the app binds that address
+# directly, same as a bare binary would have. It does NOT, on its own, satisfy
+# config.Config.Validate: that check refuses sslmode=disable whenever
+# ENV=production, full stop, with no exception for loopback — unlike the dev
+# Postgres in ../compose.yaml, which never sets ENV=production at all. That is
+# deliberate (see the comment on validateDatabaseURL in internal/config), so
+# Postgres here runs with real TLS instead of asking that check to bend:
+# sslmode=require in DATABASE_URL, a self-signed cert the `command:` below
+# installs at container start. Self-signed is enough because the property
+# that matters is "not in clear on the wire," not defending against a
+# man-in-the-middle on a single Docker host.
 #
 # SETUP:
 #   1. On the Pi: git clone https://github.com/mayloo89/retratar.git, cd in.
-#   2. Copy deploy/retratar.env.example to deploy/retratar.env and fill it in
-#      (not committed — deploy/retratar.env is gitignored).
-#   3. Every command below needs --env-file deploy/retratar.env: that is what
+#   2. Generate the Postgres TLS material once (never committed — .key is
+#      gitignored, this whole directory is Pi-local):
+#        mkdir -p deploy/postgres-tls && cd deploy/postgres-tls
+#        openssl req -x509 -newkey rsa:2048 -nodes -keyout server.key \
+#          -out server.crt -days 3650 -subj "/CN=retratar-postgres"
+#        cd -
+#   3. Copy deploy/retratar.env.example to deploy/retratar.env and fill it in
+#      (not committed — deploy/retratar.env is gitignored). DATABASE_URL must
+#      use sslmode=require, not disable.
+#   4. Every command below needs --env-file deploy/retratar.env: that is what
 #      feeds POSTGRES_PASSWORD to this file's own ${POSTGRES_PASSWORD}
 #      interpolation. docker compose does not read it from deploy/retratar.env
 #      automatically just because the compose file lives next to it.
 #        docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env \
 #          up -d --build postgres
-#   4. Wait for postgres healthy, then run migrations once:
+#   5. Wait for postgres healthy, then run migrations once:
 #        docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env \
 #          run --rm app -migrate
-#   5. docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env \
+#   6. docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env \
 #        up -d --build app
 #
 # `name:` below is not decoration. Compose otherwise derives the project name
@@ -54,6 +65,27 @@ services:
       - "127.0.0.1:5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql
+      # Read-only: the entrypoint below copies these into the volume instead
+      # of pointing Postgres at the mount directly, because the key must be
+      # owned by the postgres user with 0600 permissions, which a read-only
+      # bind mount from the host cannot provide on its own.
+      - ./postgres-tls:/tls-src:ro
+    # The official image starts as root and drops to the postgres user
+    # itself; this copies the cert/key into the data volume with the
+    # permissions Postgres insists on before handing off to the real
+    # entrypoint, rather than requiring the host-side files to somehow
+    # already have the container's internal UID.
+    command: >
+      sh -c "
+        mkdir -p /var/lib/postgresql/tls &&
+        cp /tls-src/server.crt /tls-src/server.key /var/lib/postgresql/tls/ &&
+        chmod 600 /var/lib/postgresql/tls/server.key &&
+        chown postgres:postgres /var/lib/postgresql/tls/server.crt /var/lib/postgresql/tls/server.key &&
+        exec docker-entrypoint.sh postgres
+          -c ssl=on
+          -c ssl_cert_file=/var/lib/postgresql/tls/server.crt
+          -c ssl_key_file=/var/lib/postgresql/tls/server.key
+      "
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U retratar -d retratar"]
       interval: 5s
