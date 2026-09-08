@@ -54,6 +54,15 @@ type Config struct {
 	// its own socket, and that socket must never be public. Empty disables it.
 	AdminAddr string
 
+	// SMTP* and MailFrom configure the relay magic links are sent through.
+	// Required in production; empty in development, where mail is logged
+	// instead of sent. See [Config.Validate] and mail.SMTPSender.
+	SMTPHost     string
+	SMTPPort     string
+	SMTPUsername string
+	SMTPPassword string
+	MailFrom     string
+
 	ShutdownTimeout time.Duration
 }
 
@@ -92,6 +101,11 @@ func Load(getenv Getenv) (Config, error) {
 		PagesHost:       cmp.Or(getenv("PAGES_HOST"), "pages.localhost:8080"),
 		DatabaseURL:     cmp.Or(getenv("DATABASE_URL"), defaultDatabaseURL),
 		AdminAddr:       cmp.Or(getenv("ADMIN_ADDR"), "127.0.0.1:8081"),
+		SMTPHost:        getenv("SMTP_HOST"),
+		SMTPPort:        getenv("SMTP_PORT"),
+		SMTPUsername:    getenv("SMTP_USERNAME"),
+		SMTPPassword:    getenv("SMTP_PASSWORD"),
+		MailFrom:        getenv("MAIL_FROM"),
 		ShutdownTimeout: shutdown,
 	}
 
@@ -139,6 +153,22 @@ func (c Config) Validate() error {
 		errs = append(errs, fmt.Errorf(
 			"%w: ADMIN_ADDR %q must bind to loopback; it serves pprof and expvar",
 			ErrInsecureHosts, c.AdminAddr))
+	}
+
+	// Production has no log-based mail fallback: a magic link with nowhere to
+	// send it is a login nobody can complete. See cmd/server's newMailSender.
+	if c.IsProduction() {
+		for name, val := range map[string]string{
+			"SMTP_HOST":     c.SMTPHost,
+			"SMTP_PORT":     c.SMTPPort,
+			"SMTP_USERNAME": c.SMTPUsername,
+			"SMTP_PASSWORD": c.SMTPPassword,
+			"MAIL_FROM":     c.MailFrom,
+		} {
+			if val == "" {
+				errs = append(errs, fmt.Errorf("%w: %s is required in production", ErrInvalidConfig, name))
+			}
+		}
 	}
 
 	// The session cookie is issued by AppHost. If PagesHost were AppHost or a

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mayloo89/retratar/internal/config"
+	"github.com/mayloo89/retratar/internal/mail"
 )
 
 // requireDatabaseURL skips locally when no database is configured, and fails
@@ -90,33 +91,44 @@ func envFunc(pairs map[string]string) config.Getenv {
 	return func(key string) string { return pairs[key] }
 }
 
-func TestNewMailSenderRefusesProduction(t *testing.T) {
-	t.Parallel()
-
-	cfg := config.Config{Env: config.EnvProduction}
-	_, err := newMailSender(cfg, slog.New(slog.DiscardHandler))
-	if !errors.Is(err, errNoProductionMailSender) {
-		t.Fatalf("newMailSender() error = %v, want errNoProductionMailSender", err)
-	}
-}
-
 func TestNewMailSenderAllowsDevelopment(t *testing.T) {
 	t.Parallel()
 
 	cfg := config.Config{Env: config.EnvDevelopment}
-	sender, err := newMailSender(cfg, slog.New(slog.DiscardHandler))
-	if err != nil {
-		t.Fatalf("newMailSender() error = %v, want nil", err)
-	}
+	sender := newMailSender(cfg, slog.New(slog.DiscardHandler))
 	if sender == nil {
 		t.Fatal("newMailSender() returned a nil sender")
 	}
+	if _, ok := sender.(*mail.LogSender); !ok {
+		t.Fatalf("newMailSender() = %T, want *mail.LogSender", sender)
+	}
 }
 
-// TestRunRejectsProductionWithoutMailSender proves the gate is actually wired
-// into run(), not just reachable in isolation: production config must fail
-// before run() gets anywhere near opening a database connection.
-func TestRunRejectsProductionWithoutMailSender(t *testing.T) {
+func TestNewMailSenderUsesSMTPInProduction(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{
+		Env:          config.EnvProduction,
+		SMTPHost:     "smtp.postmarkapp.com",
+		SMTPPort:     "587",
+		SMTPUsername: "token",
+		SMTPPassword: "token",
+		MailFrom:     "noreply@retratar.com.ar",
+	}
+	sender := newMailSender(cfg, slog.New(slog.DiscardHandler))
+	if sender == nil {
+		t.Fatal("newMailSender() returned a nil sender")
+	}
+	if _, ok := sender.(*mail.SMTPSender); !ok {
+		t.Fatalf("newMailSender() = %T, want *mail.SMTPSender", sender)
+	}
+}
+
+// TestRunRejectsProductionWithoutSMTPConfig proves the gate is actually wired
+// into run() through config.Validate, not just reachable in isolation:
+// production config missing a relay must fail before run() gets anywhere near
+// opening a database connection.
+func TestRunRejectsProductionWithoutSMTPConfig(t *testing.T) {
 	t.Parallel()
 
 	getenv := envFunc(map[string]string{
@@ -125,7 +137,7 @@ func TestRunRejectsProductionWithoutMailSender(t *testing.T) {
 	})
 
 	err := run(t.Context(), nil, getenv, io.Discard)
-	if !errors.Is(err, errNoProductionMailSender) {
-		t.Fatalf("run() error = %v, want errNoProductionMailSender", err)
+	if !errors.Is(err, config.ErrInvalidConfig) {
+		t.Fatalf("run() error = %v, want ErrInvalidConfig", err)
 	}
 }

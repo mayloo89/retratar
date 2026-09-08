@@ -26,22 +26,17 @@ import (
 	"github.com/mayloo89/retratar/internal/web"
 )
 
-// errNoProductionMailSender guards against starting production with the
-// development log-based mailer: a magic link written to the log turns the
-// log stream into a credential store. See [mail.LogSender].
-var errNoProductionMailSender = errors.New("no mail sender configured for production")
-
-// newMailSender chooses the mail.Sender the process runs with.
+// newMailSender chooses the mail.Sender the process runs with: an SMTP relay
+// in production, the log-based one everywhere else.
 //
-// There is only one implementation so far, and it is not safe in production.
-// This is checked before anything opens a database connection, so refusing to
-// run with it is a config-time failure, not something that shows up later
-// during startup.
-func newMailSender(cfg config.Config, logger *slog.Logger) (mail.Sender, error) {
+// [config.Config.Validate] already refuses to construct a production Config
+// missing SMTP settings, so cfg.SMTP* are known non-empty here — there is no
+// failure path left to report.
+func newMailSender(cfg config.Config, logger *slog.Logger) mail.Sender {
 	if cfg.IsProduction() {
-		return nil, errNoProductionMailSender
+		return mail.NewSMTPSender(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUsername, cfg.SMTPPassword, cfg.MailFrom)
 	}
-	return mail.NewLogSender(logger), nil
+	return mail.NewLogSender(logger)
 }
 
 func main() {
@@ -87,10 +82,7 @@ func run(ctx context.Context, args []string, getenv config.Getenv, stdout io.Wri
 		slog.String("pages_host", cfg.PagesHost),
 	)
 
-	mailer, err := newMailSender(cfg, logger)
-	if err != nil {
-		return fmt.Errorf("configure mail sender: %w", err)
-	}
+	mailer := newMailSender(cfg, logger)
 
 	pool, err := store.Open(ctx, cfg.DatabaseURL)
 	if err != nil {
