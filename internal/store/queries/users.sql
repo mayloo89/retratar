@@ -14,3 +14,18 @@ RETURNING *;
 
 -- name: GetUserByID :one
 SELECT * FROM users WHERE id = @id;
+
+-- name: ClaimHandle :one
+--
+-- The WHERE guards against re-claiming: once handle is set, this matches no
+-- row and the caller sees pgx.ErrNoRows, the same shape ConsumeLoginToken
+-- already produces for "this cannot proceed." A second, different user
+-- claiming the same handle instead hits users_handle_key and fails as a
+-- unique violation, which the caller distinguishes from "already set."
+UPDATE users
+SET handle = @handle, state = 'active'
+WHERE id = @id AND handle IS NULL
+RETURNING *;
+
+-- name: GetUserByHandle :one
+SELECT * FROM users WHERE lower(handle) = lower(@handle);

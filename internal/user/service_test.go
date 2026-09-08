@@ -311,6 +311,110 @@ func TestGetByIDRejectsUnknownID(t *testing.T) {
 	}
 }
 
+func TestClaimHandleSucceeds(t *testing.T) {
+	t.Parallel()
+
+	pool := testdb.New(t)
+	svc := user.NewService(pool)
+	created := login(t, svc, "ana@example.com")
+
+	got, err := svc.ClaimHandle(t.Context(), created.ID, "ana-lucia")
+	if err != nil {
+		t.Fatalf("ClaimHandle() error = %v, want nil", err)
+	}
+	if got.Handle != "ana-lucia" {
+		t.Errorf("Handle = %q, want %q", got.Handle, "ana-lucia")
+	}
+	if got.State != user.StateActive {
+		t.Errorf("State = %q, want %q", got.State, user.StateActive)
+	}
+}
+
+func TestClaimHandleRejectsInvalidShape(t *testing.T) {
+	t.Parallel()
+
+	pool := testdb.New(t)
+	svc := user.NewService(pool)
+	created := login(t, svc, "ana@example.com")
+
+	if _, err := svc.ClaimHandle(t.Context(), created.ID, "Ana Lucia"); !errors.Is(err, user.ErrInvalidHandle) {
+		t.Fatalf("ClaimHandle() error = %v, want ErrInvalidHandle", err)
+	}
+}
+
+func TestClaimHandleRejectsAlreadySet(t *testing.T) {
+	t.Parallel()
+
+	pool := testdb.New(t)
+	svc := user.NewService(pool)
+	created := login(t, svc, "ana@example.com")
+
+	if _, err := svc.ClaimHandle(t.Context(), created.ID, "ana"); err != nil {
+		t.Fatalf("first ClaimHandle() error = %v, want nil", err)
+	}
+	if _, err := svc.ClaimHandle(t.Context(), created.ID, "ana-lucia"); !errors.Is(err, user.ErrHandleAlreadySet) {
+		t.Fatalf("second ClaimHandle() error = %v, want ErrHandleAlreadySet", err)
+	}
+}
+
+// TestClaimHandleRejectsTaken proves the unique index on handle, not just an
+// in-app check, is what stops a second account claiming one already held.
+func TestClaimHandleRejectsTaken(t *testing.T) {
+	t.Parallel()
+
+	pool := testdb.New(t)
+	svc := user.NewService(pool)
+	first := login(t, svc, "ana@example.com")
+	second := login(t, svc, "bea@example.com")
+
+	if _, err := svc.ClaimHandle(t.Context(), first.ID, "ana"); err != nil {
+		t.Fatalf("first ClaimHandle() error = %v, want nil", err)
+	}
+	if _, err := svc.ClaimHandle(t.Context(), second.ID, "ana"); !errors.Is(err, user.ErrHandleTaken) {
+		t.Fatalf("second ClaimHandle() error = %v, want ErrHandleTaken", err)
+	}
+}
+
+func TestGetByHandleReturnsTheAccount(t *testing.T) {
+	t.Parallel()
+
+	pool := testdb.New(t)
+	svc := user.NewService(pool)
+	created := login(t, svc, "ana@example.com")
+
+	if _, err := svc.ClaimHandle(t.Context(), created.ID, "ana"); err != nil {
+		t.Fatalf("ClaimHandle() error = %v, want nil", err)
+	}
+
+	got, err := svc.GetByHandle(t.Context(), "ana")
+	if err != nil {
+		t.Fatalf("GetByHandle() error = %v, want nil", err)
+	}
+	if got.ID != created.ID {
+		t.Errorf("ID = %s, want %s", got.ID, created.ID)
+	}
+
+	// Handles are DNS labels: a lookup must not care about case.
+	got, err = svc.GetByHandle(t.Context(), "Ana")
+	if err != nil {
+		t.Fatalf("GetByHandle(uppercase) error = %v, want nil", err)
+	}
+	if got.ID != created.ID {
+		t.Errorf("GetByHandle(uppercase) ID = %s, want %s", got.ID, created.ID)
+	}
+}
+
+func TestGetByHandleRejectsUnknown(t *testing.T) {
+	t.Parallel()
+
+	pool := testdb.New(t)
+	svc := user.NewService(pool)
+
+	if _, err := svc.GetByHandle(t.Context(), "nobody"); !errors.Is(err, user.ErrUserNotFound) {
+		t.Fatalf("GetByHandle() error = %v, want ErrUserNotFound", err)
+	}
+}
+
 // login runs a whole magic link round trip and returns the account.
 func login(t *testing.T, svc *user.Service, address string) user.User {
 	t.Helper()
