@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Choose your handle</title>
+</head>
+<body>
+<h1>Choose your handle</h1>
+<p>This becomes your page's address: https://&lt;handle&gt;.retrat.ar — lowercase letters, numbers and hyphens only.</p>
+<form method="post" action="/handle">
+<label for="handle">Handle</label>
+<input type="text" id="handle" name="handle" required>
+<button type="submit">Claim it</button>
+</form>
+{{with .Error}}<p role="alert">{{.}}</p>{{end}}
+</body>
+</html>

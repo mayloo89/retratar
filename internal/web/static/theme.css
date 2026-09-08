@@ -1,0 +1,53 @@
+/* retratar default theme.
+ *
+ * One stylesheet, one class contract: .blk-* names blocks, .mood-<key>
+ * tints the page. A future theme is another file against this same
+ * contract, not a code change — see docs/architecture.md.
+ */
+
+body {
+	margin: 0;
+	padding: 2rem 1.5rem;
+	font-family: system-ui, sans-serif;
+	min-height: 100vh;
+	box-sizing: border-box;
+	background: var(--mood-bg, #f4f4f4);
+	color: var(--mood-fg, #222);
+	transition: background-color 0.3s ease;
+}
+
+.blk-identity {
+	margin: 0 0 0.5rem;
+	font-size: 1.75rem;
+}
+
+.blk-mood-label {
+	margin: 0 0 0.25rem;
+	font-weight: 600;
+	text-transform: capitalize;
+}
+
+.blk-mood-note {
+	margin: 0;
+	opacity: 0.85;
+}
+
+.blk-mood-empty {
+	margin: 0;
+	opacity: 0.6;
+	font-style: italic;
+}
+
+.mood-feliz      { --mood-bg: #fff4cc; --mood-fg: #5c4a00; }
+.mood-triste     { --mood-bg: #dbe6f2; --mood-fg: #22344a; }
+.mood-tranquilo  { --mood-bg: #dff2ea; --mood-fg: #1f4a3a; }
+.mood-ansioso    { --mood-bg: #fde3d0; --mood-fg: #5c2e00; }
+.mood-enamorado  { --mood-bg: #fbdce6; --mood-fg: #5c1f34; }
+.mood-cansado    { --mood-bg: #e6e2f2; --mood-fg: #382f5c; }
+.mood-enojado    { --mood-bg: #f6d3d3; --mood-fg: #5c1a1a; }
+.mood-aburrido   { --mood-bg: #ececec; --mood-fg: #3a3a3a; }
+.mood-inspirado  { --mood-bg: #d9f2d0; --mood-fg: #23491a; }
+.mood-nostalgico { --mood-bg: #f0e0cc; --mood-fg: #4a3620; }
+.mood-fiesta     { --mood-bg: #f2d0f2; --mood-fg: #4a1a4a; }
+.mood-perdido    { --mood-bg: #d6d6d6; --mood-fg: #2b2b2b; }
+.mood-none       { --mood-bg: #f4f4f4; --mood-fg: #222; }

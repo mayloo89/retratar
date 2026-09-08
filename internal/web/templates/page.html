@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>{{.Handle}}</title>
+<link rel="stylesheet" href="/theme.css">
+</head>
+<body class="blk-mood mood-{{.MoodClass}}">
+<h1 class="blk-identity">{{.Handle}}</h1>
+{{if .HasMood}}
+<p class="blk-mood-label">{{.MoodLabel}}</p>
+{{if .MoodNote}}<p class="blk-mood-note">{{.MoodNote}}</p>{{end}}
+{{else}}
+<p class="blk-mood-empty">Todavía no eligió un estado de ánimo.</p>
+{{end}}
+</body>
+</html>

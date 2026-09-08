@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/mayloo89/retratar/internal/config"
+	"github.com/mayloo89/retratar/internal/mood"
 	"github.com/mayloo89/retratar/internal/session"
 	"github.com/mayloo89/retratar/internal/testdb"
 	"github.com/mayloo89/retratar/internal/user"
@@ -67,6 +68,7 @@ func newLoginServer(t *testing.T) (*web.Server, *stubSender) {
 		Logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Users:    user.NewService(pool),
 		Sessions: session.NewService(pool),
+		Moods:    mood.NewService(pool),
 		Mailer:   sender,
 	}, sender
 }
@@ -127,6 +129,9 @@ func completeLogin(t *testing.T, h http.Handler, host string, sender *stubSender
 	return sessionCookie
 }
 
+// TestLoginFlow_SignsInAndAuthenticatesFollowingRequests's fresh account has
+// no handle yet, so the home page it reaches is the claim form, not the
+// dashboard — see [handleAppHome].
 func TestLoginFlow_SignsInAndAuthenticatesFollowingRequests(t *testing.T) {
 	srv, sender := newLoginServer(t)
 	h := srv.Handler()
@@ -136,12 +141,15 @@ func TestLoginFlow_SignsInAndAuthenticatesFollowingRequests(t *testing.T) {
 
 	home := request(t, h, http.MethodGet, host, "/", nil, sessionCookie)
 	defer home.Body.Close() //nolint:errcheck // httptest body close cannot fail
+	if home.StatusCode != http.StatusOK {
+		t.Fatalf("home status = %d, want 200", home.StatusCode)
+	}
 	body, err := io.ReadAll(home.Body)
 	if err != nil {
 		t.Fatalf("read body: %v", err)
 	}
-	if !strings.Contains(string(body), "ana@example.com") {
-		t.Errorf("home body = %q, want it to mention the signed-in email", body)
+	if !strings.Contains(string(body), "Choose your handle") {
+		t.Errorf("home body = %q, want the claim-handle form for an account with no handle yet", body)
 	}
 }
 
@@ -160,10 +168,12 @@ func TestLogout_RevokesTheSession(t *testing.T) {
 	}
 
 	home := request(t, h, http.MethodGet, host, "/", nil, sessionCookie)
-	defer home.Body.Close() //nolint:errcheck // httptest body close cannot fail
-	body, _ := io.ReadAll(home.Body)
-	if string(body) != "retratar app\n" {
-		t.Errorf("home body after logout = %q, want the unauthenticated body", body)
+	home.Body.Close() //nolint:errcheck // httptest body close cannot fail
+	if home.StatusCode != http.StatusSeeOther {
+		t.Fatalf("home status after logout = %d, want 303 (redirect to /login)", home.StatusCode)
+	}
+	if got := home.Header.Get("Location"); got != "/login" {
+		t.Errorf("home Location after logout = %q, want %q", got, "/login")
 	}
 }
 

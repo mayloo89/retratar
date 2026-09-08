@@ -11,11 +11,15 @@ import (
 	"testing"
 
 	"github.com/mayloo89/retratar/internal/config"
+	"github.com/mayloo89/retratar/internal/mood"
+	"github.com/mayloo89/retratar/internal/testdb"
+	"github.com/mayloo89/retratar/internal/user"
 	"github.com/mayloo89/retratar/internal/web"
 )
 
 func testServer(t *testing.T) *web.Server {
 	t.Helper()
+	pool := testdb.New(t)
 	return &web.Server{
 		Config: config.Config{
 			Env:       config.EnvProduction,
@@ -24,6 +28,8 @@ func testServer(t *testing.T) *web.Server {
 			PagesHost: "retrat.ar",
 		},
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Users:  user.NewService(pool),
+		Moods:  mood.NewService(pool),
 	}
 }
 
@@ -40,29 +46,39 @@ func TestHostSplit(t *testing.T) {
 	h := testServer(t).Handler()
 
 	tests := []struct {
-		name       string
-		host       string
-		wantStatus int
-		wantBody   string
+		name         string
+		host         string
+		wantStatus   int
+		wantBody     string
+		wantLocation string
 	}{
-		{"app surface", "retratar.com.ar", http.StatusOK, "retratar app\n"},
-		{"app surface ignores case", "RETRATAR.com.AR", http.StatusOK, "retratar app\n"},
-		{"app surface ignores default port", "retratar.com.ar:443", http.StatusOK, "retratar app\n"},
-		{"page", "sebas.retrat.ar", http.StatusOK, "page: sebas\n"},
-		{"bare pages domain redirects to app", "retrat.ar", http.StatusFound, ""},
+		// Anonymous requests to the app surface are sent to sign in; see
+		// handleAppHome. That is a 303, not a 200, but the redirect target
+		// still proves the host routed to the app surface and not somewhere
+		// else.
+		{"app surface", "retratar.com.ar", http.StatusSeeOther, "", "/login"},
+		{"app surface ignores case", "RETRATAR.com.AR", http.StatusSeeOther, "", "/login"},
+		{"app surface ignores default port", "retratar.com.ar:443", http.StatusSeeOther, "", "/login"},
+		// testServer has no account with this handle claimed, so a
+		// well-formed handle 404s here for the same reason an unclaimed one
+		// would in production — this table is about routing, not content;
+		// see page_test.go for a real account's page rendering.
+		{"page", "sebas.retrat.ar", http.StatusNotFound, "", ""},
+		{"bare pages domain redirects to app", "retrat.ar", http.StatusFound, "", "https://retratar.com.ar/"},
 		// An unknown host must never fall through to a surface. A hostname
 		// pointed at this server that we did not configure is not ours, and
 		// serving the login form on it would put credentials on a foreign origin.
-		{"unknown host", "evil.example.com", http.StatusNotFound, ""},
-		{"nested page host", "a.b.retrat.ar", http.StatusNotFound, ""},
-		{"subdomain of app host", "anything.retratar.com.ar", http.StatusNotFound, ""},
-		{"reserved handle", "admin.retrat.ar", http.StatusNotFound, ""},
-		// DNS is case-insensitive, so an uppercase host is the same page.
-		{"uppercase page host", "SEBAS.retrat.ar", http.StatusOK, "page: sebas\n"},
-		{"underscore in handle", "se_bas.retrat.ar", http.StatusNotFound, ""},
-		{"leading hyphen in handle", "-sebas.retrat.ar", http.StatusNotFound, ""},
-		{"punycode-shaped handle", "xn--a.retrat.ar", http.StatusNotFound, ""},
-		{"empty host", "", http.StatusNotFound, ""},
+		{"unknown host", "evil.example.com", http.StatusNotFound, "", ""},
+		{"nested page host", "a.b.retrat.ar", http.StatusNotFound, "", ""},
+		{"subdomain of app host", "anything.retratar.com.ar", http.StatusNotFound, "", ""},
+		{"reserved handle", "admin.retrat.ar", http.StatusNotFound, "", ""},
+		// DNS is case-insensitive, so an uppercase host resolves to the same
+		// (here, still unclaimed) handle.
+		{"uppercase page host", "SEBAS.retrat.ar", http.StatusNotFound, "", ""},
+		{"underscore in handle", "se_bas.retrat.ar", http.StatusNotFound, "", ""},
+		{"leading hyphen in handle", "-sebas.retrat.ar", http.StatusNotFound, "", ""},
+		{"punycode-shaped handle", "xn--a.retrat.ar", http.StatusNotFound, "", ""},
+		{"empty host", "", http.StatusNotFound, "", ""},
 	}
 
 	for _, tt := range tests {
@@ -72,6 +88,11 @@ func TestHostSplit(t *testing.T) {
 
 			if resp.StatusCode != tt.wantStatus {
 				t.Fatalf("status = %d, want %d", resp.StatusCode, tt.wantStatus)
+			}
+			if tt.wantLocation != "" {
+				if got := resp.Header.Get("Location"); got != tt.wantLocation {
+					t.Errorf("Location = %q, want %q", got, tt.wantLocation)
+				}
 			}
 			if tt.wantBody == "" {
 				return

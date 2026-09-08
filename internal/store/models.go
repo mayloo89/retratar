@@ -18,6 +18,21 @@ type LoginToken struct {
 	ConsumedAt pgtype.Timestamptz
 }
 
+type Mood struct {
+	UserID    uuid.UUID
+	MoodKey   string
+	Note      *string
+	UpdatedAt pgtype.Timestamptz
+}
+
+type MoodHistory struct {
+	ID      uuid.UUID
+	UserID  uuid.UUID
+	MoodKey string
+	Note    *string
+	At      pgtype.Timestamptz
+}
+
 type Session struct {
 	ID          uuid.UUID
 	SessionHash []byte

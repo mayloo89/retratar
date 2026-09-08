@@ -1,10 +1,10 @@
-package web_test
+package user_test
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/mayloo89/retratar/internal/web"
+	"github.com/mayloo89/retratar/internal/user"
 )
 
 func TestValidHandle(t *testing.T) {
@@ -39,7 +39,7 @@ func TestValidHandle(t *testing.T) {
 			name = "empty"
 		}
 		t.Run(name, func(t *testing.T) {
-			if got := web.ValidHandle(tt.handle); got != tt.want {
+			if got := user.ValidHandle(tt.handle); got != tt.want {
 				t.Errorf("ValidHandle(%q) = %v, want %v (%s)", tt.handle, got, tt.want, tt.why)
 			}
 		})
@@ -47,10 +47,10 @@ func TestValidHandle(t *testing.T) {
 }
 
 func TestValidHandleLengthBoundary(t *testing.T) {
-	if !web.ValidHandle(strings.Repeat("a", 30)) {
+	if !user.ValidHandle(strings.Repeat("a", 30)) {
 		t.Error("30-character handle rejected, want accepted")
 	}
-	if web.ValidHandle(strings.Repeat("a", 31)) {
+	if user.ValidHandle(strings.Repeat("a", 31)) {
 		t.Error("31-character handle accepted, want rejected")
 	}
 }
