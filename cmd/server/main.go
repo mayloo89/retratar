@@ -19,6 +19,7 @@ import (
 	"github.com/mayloo89/retratar/internal/buildinfo"
 	"github.com/mayloo89/retratar/internal/config"
 	"github.com/mayloo89/retratar/internal/mail"
+	"github.com/mayloo89/retratar/internal/mood"
 	"github.com/mayloo89/retratar/internal/session"
 	"github.com/mayloo89/retratar/internal/store"
 	"github.com/mayloo89/retratar/internal/user"
@@ -94,6 +95,7 @@ func run(ctx context.Context, args []string, getenv config.Getenv, stdout io.Wri
 		Logger:   logger,
 		Users:    user.NewService(pool),
 		Sessions: session.NewService(pool),
+		Moods:    mood.NewService(pool),
 		Mailer:   mailer,
 	}
 
