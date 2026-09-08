@@ -24,17 +24,24 @@ We will run retratar's Postgres and the app itself as two services in
 `Dockerfile` (already multi-stage, distroless, and `TARGETARCH`-aware — built
 for this without changes).
 
-The app service uses `network_mode: host` rather than a bridge network.
-`config.Config.Validate` refuses `sslmode=disable` outside of a literal
-loopback connection in production, and that check stays as strict as it is
-for `internal/config`'s local dev Postgres — a container-to-container bridge
-hop would need its own TLS story to satisfy it for no real security gain on a
-single host. Host networking makes `DATABASE_URL`'s host `127.0.0.1` for
-real, and it means nginx's `proxy_pass http://127.0.0.1:8082` (see
-`deploy/nginx/*.conf`, decision 0004) needs no change — the app binds that
-address directly, same as a bare binary would have. Postgres keeps normal
-bridge networking, published only to `127.0.0.1:5432`, matching
-`compose.yaml`'s existing dev shape.
+The app service uses `network_mode: host` rather than a bridge network: it
+means nginx's `proxy_pass http://127.0.0.1:8082` (see `deploy/nginx/*.conf`,
+decision 0004) needs no change — the app binds that address directly, same as
+a bare binary would have — and it keeps `DATABASE_URL`'s host a literal
+`127.0.0.1`.
+
+That host alone does not satisfy `config.Config.Validate`, though: the check
+refuses `sslmode=disable` whenever `ENV=production`, unconditionally, with no
+exception for loopback — unlike `internal/config`'s local dev Postgres, which
+never runs with `ENV=production` at all. Postgres here runs with a
+self-signed TLS certificate instead (`deploy/postgres-tls/`, generated once
+on the Pi, never committed — see the setup steps in
+`deploy/docker-compose.yml`), and `DATABASE_URL` uses `sslmode=require`.
+Self-signed is enough because the property that matters is "not in clear on
+the wire," not defending against a man-in-the-middle on a single Docker host.
+Postgres keeps normal bridge networking, published only to
+`127.0.0.1:5433` — not `5432`, which the Pi's native `postgresql@15-main`
+already holds.
 
 ## Consequences
 

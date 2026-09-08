@@ -62,12 +62,16 @@ They are kept, unmodified, as the reference for a possible future move to a
 dedicated VPS — not deleted, since deleting them would need re-deriving the
 on-demand-TLS design later if that move happens.
 
-The origin is reachable directly at the Pi's public IP by anyone who knows it,
-bypassing Cloudflare's proxy and CSAM/WAF layer entirely — Cloudflare proxying
-hides the origin from casual discovery but does not firewall it. Restricting
-inbound 80/443 to Cloudflare's published IP ranges (nginx `allow`/`deny`, or a
-host firewall rule) closes that gap and is a reasonable follow-up once the
-first deploy is proven, not a blocker for it.
+Cloudflare proxying alone hides the origin from casual discovery but does not
+firewall it — the Pi's public IP would otherwise take requests directly,
+bypassing Cloudflare's proxy and CSAM/WAF layer entirely. `deploy/nginx/*.conf`
+closes that with `deploy/nginx/cloudflare-ips.conf.inc`, an `allow`/`deny`
+list of Cloudflare's published edge ranges, included in every retratar server
+block. It needs a manual re-check against
+[cloudflare.com/ips](https://www.cloudflare.com/ips/) if Cloudflare ever
+changes those ranges — there is no automation for it, and a stale list fails
+safe (a request from a brand-new range gets a 403, not the origin silently
+opening up), so this is not urgent, just not truly "set and forget."
 
 The Origin CA cert is generated and installed by hand, not automated. Losing
 it or the Pi's disk means generating a new one from Cloudflare and re-copying

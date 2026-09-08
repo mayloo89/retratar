@@ -42,8 +42,8 @@ func TestLoadReadsEnvironment(t *testing.T) {
 		"SHUTDOWN_TIMEOUT": "30s",
 		"SMTP_HOST":        "smtp.postmarkapp.com",
 		"SMTP_PORT":        "587",
-		"SMTP_USERNAME":    "token",
-		"SMTP_PASSWORD":    "token",
+		"SMTP_USERNAME":    "smtp-user",
+		"SMTP_PASSWORD":    "smtp-pass",
 		"MAIL_FROM":        "noreply@retratar.com.ar",
 	}))
 	if err != nil {
@@ -57,6 +57,23 @@ func TestLoadReadsEnvironment(t *testing.T) {
 	}
 	if cfg.ShutdownTimeout != 30*time.Second {
 		t.Errorf("ShutdownTimeout = %s, want 30s", cfg.ShutdownTimeout)
+	}
+	// Distinct SMTP_USERNAME/SMTP_PASSWORD values so a swap between the two
+	// fields would fail this, not pass it by coincidence.
+	if cfg.SMTPHost != "smtp.postmarkapp.com" {
+		t.Errorf("SMTPHost = %q, want %q", cfg.SMTPHost, "smtp.postmarkapp.com")
+	}
+	if cfg.SMTPPort != "587" {
+		t.Errorf("SMTPPort = %q, want %q", cfg.SMTPPort, "587")
+	}
+	if cfg.SMTPUsername != "smtp-user" {
+		t.Errorf("SMTPUsername = %q, want %q", cfg.SMTPUsername, "smtp-user")
+	}
+	if cfg.SMTPPassword != "smtp-pass" {
+		t.Errorf("SMTPPassword = %q, want %q", cfg.SMTPPassword, "smtp-pass")
+	}
+	if cfg.MailFrom != "noreply@retratar.com.ar" {
+		t.Errorf("MailFrom = %q, want %q", cfg.MailFrom, "noreply@retratar.com.ar")
 	}
 }
 
