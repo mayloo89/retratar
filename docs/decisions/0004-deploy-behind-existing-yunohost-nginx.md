@@ -57,10 +57,20 @@ also live in this same Cloudflare zone, added once alongside the A records.
 ## Consequences
 
 `deploy/Caddyfile` and the `ask`-based on-demand TLS flow in
-`internal/web/router.go` (`handleTLSCheck`) are dead code on this deploy path.
-They are kept, unmodified, as the reference for a possible future move to a
-dedicated VPS — not deleted, since deleting them would need re-deriving the
-on-demand-TLS design later if that move happens.
+`internal/web/router.go` (`handleTLSCheck`, the `GET /internal/tls-check`
+route, and the `stripPort` helper only that route used) became dead code on
+this deploy path: nothing in the nginx + Cloudflare chain calls an `ask`
+endpoint, and Cloudflare's Universal SSL covers `*.retrat.ar` with no
+per-hostname ACME step to gate.
+
+**Superseded, 2026-09-08:** they were deleted, not kept. `deploy/nginx/*.conf`
+proxies everything through a bare `location /` with no `/internal/` exclusion,
+so `GET /internal/tls-check` — whose own doc comment declared "This route must
+not be reachable from the public internet" — was in fact reachable from the
+public internet, gating nothing. A dead endpoint that contradicts its own
+stated invariant is more dangerous kept than removed. The on-demand-TLS design
+is still recoverable from this ADR and from git history if a move to a
+dedicated VPS ever revives the need for it.
 
 Cloudflare proxying alone hides the origin from casual discovery but does not
 firewall it — the Pi's public IP would otherwise take requests directly,

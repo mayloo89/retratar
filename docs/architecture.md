@@ -5,7 +5,7 @@
 ```
                     Cloudflare
                         |
-                      Caddy
+              nginx on the Pi (YunoHost)
                         |
         +---------------+----------------+
         |                                |
