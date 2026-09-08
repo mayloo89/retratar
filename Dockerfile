@@ -3,7 +3,7 @@
 # The final image is distroless/static — no shell, no package manager, no libc.
 # If the process is ever compromised there is nothing in the image to pivot to.
 
-FROM golang:1.26-alpine AS build
+FROM golang:1.27-alpine AS build
 
 WORKDIR /src
 
