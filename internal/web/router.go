@@ -38,7 +38,12 @@ type Server struct {
 // Handler builds the root handler: shared middleware, then a split by hostname
 // into the two surfaces.
 func (s *Server) Handler() http.Handler {
-	app := Chain(s.appRoutes(), AppCSP, PrivateCache, CurrentUser(s.Sessions, s.Users))
+	// One limiter instance, shared by the write routes it wraps in appRoutes.
+	// Handler is called once per process (see cmd/server), so this is not a
+	// per-request or per-call allocation.
+	writes := newRateLimiter(writeRateBurst, writeRateRefill, limiterIdleTTL)
+
+	app := Chain(s.appRoutes(writes), AppCSP, PrivateCache, CurrentUser(s.Sessions, s.Users))
 	pages := Chain(s.pageRoutes(), PagesCSP)
 
 	root := s.hostSplit(app, pages)
@@ -82,19 +87,26 @@ func (s *Server) hostSplit(app, pages http.Handler) http.Handler {
 }
 
 // appRoutes serves the owner-facing surface.
-func (s *Server) appRoutes() http.Handler {
+//
+// writes rate-limits the endpoints a script can abuse cheaply. POST /login is
+// the one that matters — it sends mail — but POST /handle and POST /mood are
+// unbounded writes too, so they share the limiter. POST /logout is left off:
+// it sends nothing, its work is a single idempotent revoke, and a forged
+// logout is a nuisance rather than a cost. GET routes are read-only and the
+// login sub-steps (GET/POST /login/{token}) are already gated by the nonce
+// cookie and a single-use token.
+func (s *Server) appRoutes(writes *rateLimiter) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealth)
-	mux.HandleFunc("GET /internal/tls-check", s.handleTLSCheck)
 	mux.HandleFunc("GET /{$}", s.handleAppHome)
 	mux.HandleFunc("GET /login", s.handleLoginForm)
-	mux.HandleFunc("POST /login", s.handleLoginRequest)
+	mux.Handle("POST /login", writes.rateLimit(http.HandlerFunc(s.handleLoginRequest)))
 	mux.HandleFunc("GET /login/{token}", s.handleLoginConfirm)
 	mux.HandleFunc("POST /login/{token}", s.handleLoginComplete)
 	mux.HandleFunc("POST /logout", s.handleLogout)
 	mux.HandleFunc("GET /handle", s.handleClaimForm)
-	mux.HandleFunc("POST /handle", s.handleClaimSubmit)
-	mux.HandleFunc("POST /mood", s.handleMoodSubmit)
+	mux.Handle("POST /handle", writes.rateLimit(http.HandlerFunc(s.handleClaimSubmit)))
+	mux.Handle("POST /mood", writes.rateLimit(http.HandlerFunc(s.handleMoodSubmit)))
 	return mux
 }
 
@@ -111,54 +123,6 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
-}
-
-// handleTLSCheck answers Caddy's on-demand TLS "ask" probe.
-//
-// Wildcard certificates for *.retrat.ar would need a DNS-01 challenge, so
-// certificates are issued per hostname on first request instead. Without this
-// check, anyone could point a hostname at the server and make it request a
-// certificate, burning the certificate authority's rate limit for the whole
-// domain. Caddy asks here first and only proceeds on 200.
-//
-// This route must not be reachable from the public internet; the reverse proxy
-// calls it over loopback.
-func (s *Server) handleTLSCheck(w http.ResponseWriter, r *http.Request) {
-	domain := r.URL.Query().Get("domain")
-	if domain == "" {
-		http.Error(w, "missing domain", http.StatusBadRequest)
-		return
-	}
-
-	// A domain in an ACME request never carries a port, so compare against
-	// port-less hosts. Locally the configured hosts do carry one.
-	host := stripPort(canonicalHost(domain))
-	appHost := stripPort(canonicalHost(s.Config.AppHost))
-	pagesHost := stripPort(canonicalHost(s.Config.PagesHost))
-
-	if host == appHost || host == pagesHost {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	// TODO(phase-1): once handles are stored, also require that the handle is
-	// registered. Shape-checking alone still allows a certificate per
-	// well-formed name.
-	if _, ok := handleFromHost(host, pagesHost); ok {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	s.Logger.WarnContext(r.Context(), "on-demand TLS refused", slog.String("domain", domain))
-	http.Error(w, "unknown domain", http.StatusForbidden)
-}
-
-// stripPort removes any port from a host[:port] string. net.SplitHostPort is
-// not used because it errors on a bare host.
-func stripPort(hostport string) string {
-	if i := strings.LastIndexByte(hostport, ':'); i >= 0 {
-		return hostport[:i]
-	}
-	return hostport
 }
 
 // canonicalHost lowercases a host and drops a default port so that

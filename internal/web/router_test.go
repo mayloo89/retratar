@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"slices"
 	"strings"
 	"testing"
@@ -211,39 +210,5 @@ func TestHealthz(t *testing.T) {
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusOK)
-	}
-}
-
-// TestTLSCheck guards the on-demand certificate gate. Answering 200 for an
-// arbitrary hostname would let anyone point DNS here and burn the certificate
-// authority's rate limit for the whole domain.
-func TestTLSCheck(t *testing.T) {
-	h := testServer(t).Handler()
-
-	tests := []struct {
-		name       string
-		domain     string
-		wantStatus int
-	}{
-		{"app host", "retratar.com.ar", http.StatusOK},
-		{"pages apex", "retrat.ar", http.StatusOK},
-		{"valid handle", "sebas.retrat.ar", http.StatusOK},
-		{"unknown domain", "evil.example.com", http.StatusForbidden},
-		{"lookalike suffix", "notretrat.ar", http.StatusForbidden},
-		{"reserved handle", "admin.retrat.ar", http.StatusForbidden},
-		{"nested host", "a.b.retrat.ar", http.StatusForbidden},
-		{"missing domain", "", http.StatusBadRequest},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			path := "/internal/tls-check?domain=" + url.QueryEscape(tt.domain)
-			resp := get(t, h, "retratar.com.ar", path)
-			defer resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
-
-			if resp.StatusCode != tt.wantStatus {
-				t.Errorf("status = %d, want %d", resp.StatusCode, tt.wantStatus)
-			}
-		})
 	}
 }

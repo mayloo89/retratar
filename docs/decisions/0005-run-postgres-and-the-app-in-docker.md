@@ -45,9 +45,12 @@ already holds.
 
 ## Consequences
 
-`deploy/retratar.service` is dead on this deploy path, same status as
-`deploy/Caddyfile` after decision 0004 — kept as the reference for a future
-dedicated-VPS move, not deleted.
+`deploy/retratar.service` is dead on this deploy path — kept as the reference
+for a future dedicated-VPS move, not deleted. (The original wording here
+pointed at `deploy/Caddyfile` as the identical case; that file was since
+deleted, on 2026-09-08 — see decision 0004's Consequences. The systemd unit
+stays because, unlike the Caddyfile and its `ask` endpoint, it contradicts no
+invariant merely by existing.)
 
 The app container needs `network_mode: host`, which is Linux-only; this was
 never a portability concern since the Pi is the only target.
