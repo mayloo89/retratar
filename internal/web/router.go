@@ -38,13 +38,15 @@ type Server struct {
 // Handler builds the root handler: shared middleware, then a split by hostname
 // into the two surfaces.
 func (s *Server) Handler() http.Handler {
-	// One limiter instance, shared by the write routes it wraps in appRoutes.
-	// Handler is called once per process (see cmd/server), so this is not a
-	// per-request or per-call allocation.
+	// One limiter instance per surface, shared by the routes each wraps.
+	// Handler is called once per process (see cmd/server), so neither is a
+	// per-request or per-call allocation. reads has its own, looser budget
+	// than writes — see ogRateBurst/ogRateRefill in ratelimit.go.
 	writes := newRateLimiter(writeRateBurst, writeRateRefill, limiterIdleTTL)
+	reads := newRateLimiter(ogRateBurst, ogRateRefill, limiterIdleTTL)
 
 	app := Chain(s.appRoutes(writes), AppCSP, PrivateCache, CurrentUser(s.Sessions, s.Users))
-	pages := Chain(s.pageRoutes(), PagesCSP)
+	pages := Chain(s.pageRoutes(reads), PagesCSP)
 
 	root := s.hostSplit(app, pages)
 
@@ -112,10 +114,15 @@ func (s *Server) appRoutes(writes *rateLimiter) http.Handler {
 
 // pageRoutes serves rendered public pages. Every handler here reads the handle
 // from the request context; see [HandleFrom].
-func (s *Server) pageRoutes() http.Handler {
+//
+// GET /og.png is rate-limited by reads: unlike /{$} and /theme.css, it
+// rasterises text and encodes a PNG per request, so it is the one route on
+// this surface an unauthenticated caller can use to burn real CPU.
+func (s *Server) pageRoutes(reads *rateLimiter) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.handlePage)
 	mux.HandleFunc("GET /theme.css", s.handleTheme)
+	mux.Handle("GET /og.png", reads.rateLimit(http.HandlerFunc(s.handleOGImage)))
 	return mux
 }
 
