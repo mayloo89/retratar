@@ -301,6 +301,29 @@ func TestBaseURLSchemeFollowsEnvironment(t *testing.T) {
 	}
 }
 
+func TestPageBaseURLSchemeFollowsEnvironment(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		env  config.Environment
+		want string
+	}{
+		{config.EnvProduction, "https://sebas.retrat.ar"},
+		{config.EnvDevelopment, "http://sebas.retrat.ar"},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.env), func(t *testing.T) {
+			t.Parallel()
+
+			cfg := config.Config{Env: tt.env, PagesHost: "retrat.ar"}
+			if got := cfg.PageBaseURL("sebas"); got != tt.want {
+				t.Errorf("PageBaseURL(%q) = %q, want %q", "sebas", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestValidateDatabaseURL(t *testing.T) {
 	t.Parallel()
 

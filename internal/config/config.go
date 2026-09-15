@@ -236,11 +236,23 @@ func (c Config) PageHostFor(handle string) string {
 
 // BaseURL returns the absolute origin of the owner-facing app.
 func (c Config) BaseURL() string {
+	return baseURL(c.IsProduction(), c.AppHost)
+}
+
+// PageBaseURL returns the absolute origin of a handle's public page, e.g.
+// "https://sebas.retrat.ar" in production. It exists because an og:image
+// meta tag must be an absolute URL — scrapers do not resolve a relative
+// one — and is the pages-surface counterpart to [Config.BaseURL].
+func (c Config) PageBaseURL(handle string) string {
+	return baseURL(c.IsProduction(), c.PageHostFor(handle))
+}
+
+func baseURL(production bool, host string) string {
 	scheme := "http"
-	if c.IsProduction() {
+	if production {
 		scheme = "https"
 	}
-	u := url.URL{Scheme: scheme, Host: c.AppHost}
+	u := url.URL{Scheme: scheme, Host: host}
 	return u.String()
 }
 
