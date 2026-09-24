@@ -21,26 +21,35 @@ off-network; there is no public SSH and no VPN. The checkout lives at
 
 ## Current state
 
-Last verified 2026-09-15.
+Last verified 2026-09-24.
 
 | surface | state |
 |---|---|
 | `retratar.com.ar` | serving, HTTP 200 |
-| `retrat.ar`, `*.retrat.ar` | **down** — TCP connects, TLS completes, the HTTP request is reset |
+| `sebas.retrat.ar` | serving, HTTP 200, body `page: sebas` |
 
-Both served 200 on 2026-09-08, so this is a regression, not a setup that never
-worked.
+Both surfaces are up. An earlier revision of this file recorded `*.retrat.ar`
+as down; that was a local TLS filter, not the box. See *Verifying site state*
+below before you trust any probe run from a laptop.
 
-**The running deploy predates PR #10.** The Pi was cloned from
+**The running deploy predates PR #8.** The Pi was cloned from
 `feat/postmark-smtp-and-pi-deploy` while that branch was unmerged and has not
-been re-deployed since. The container and the installed nginx configs are both
-older than `develop`.
+been re-deployed since. The live body dates it exactly: `page: sebas` is the
+scaffold stub from `internal/web/router.go` in `3ba9b06`, which PR #8 replaced
+with the real `html/template` render.
 
-The consequence is a live security gap, not a cosmetic drift: **neither layer
-of the rate limiting is on the box.** `POST /login` on the live host mints a
-magic link and hands it to the SMTP relay for any caller, unthrottled — an
-email flood aimed at someone else's inbox and a bill on the relay. Procedure A
-is the fix. Treat it as the reason to open the laptop, not as tidying.
+So the box is running roughly three weeks and seven merged PRs behind
+`develop`, and the drift is not cosmetic:
+
+- **No rate limiting**, neither layer. `POST /login` on the live host mints a
+  magic link and hands it to the SMTP relay for any caller, unthrottled — an
+  email flood aimed at someone else's inbox, and a bill on the relay. This is
+  a live security gap.
+- **No page render.** No mood, no note, no `theme.css`. The product's visible
+  half is a plain-text handle echo.
+
+Procedure A is the fix. Treat it as the reason to open the laptop, not as
+tidying.
 
 ## Procedure A — re-deploy from `develop`
 
@@ -97,19 +106,33 @@ This hits the app on loopback, so it tests the Go limiter only. The nginx
 `limit_req` layer is a separate check — make the same requests through the
 public hostname once the surface is back up.
 
-## Procedure B — diagnose the `retrat.ar` reset
+## Verifying site state — read this before believing a probe
 
-What is already ruled out, from off-network, so you do not repeat it:
+A probe run from a laptop measures the laptop's network as much as the box. On
+2026-09-15 `retrat.ar` and `*.retrat.ar` appeared dead from the dev machine —
+TCP connected, TLS completed, the HTTP request was reset — and that got
+recorded here as an origin regression. It was a FortiGuard web filter on that
+network intercepting these domains. The site was fine the whole time.
 
-- **Not DNS.** Both zones are on Cloudflare nameservers.
-- **Not certificates.** The edge serves a valid cert with SANs `retrat.ar` and
-  `*.retrat.ar`; the handshake completes and verifies.
-- **Not the network path or an edge IP.** `retratar.com.ar` succeeds from both
-  Cloudflare edge IPs and `retrat.ar` fails from both.
-- **Not the Go app.** The app answers `Host: retrat.ar` with a redirect and an
-  unclaimed handle with 404. It has no code path that resets a connection.
+The reset-after-handshake symptom is identical either way. What distinguishes
+them is the certificate issuer, so check it first, every time:
 
-That leaves nginx on the Pi and the Cloudflare `retrat.ar` zone. Work outward:
+    openssl s_client -connect sebas.retrat.ar:443 -servername sebas.retrat.ar \
+      </dev/null 2>/dev/null | openssl x509 -noout -subject -issuer
+
+Cloudflare in the issuer means you are talking to the real edge. Anything else
+— `O=Fortinet`, a corporate CA, any name you do not recognise — means a
+middlebox is answering and **no result from that network says anything about
+the box.** Retest from cellular or an external checker.
+
+Two earlier readings of this project's state were wrong for this same reason:
+a stale resolver returning registrar-parking records, and this filter. Both
+times the local environment was the fault and the box was fine. Confirm the
+path before concluding anything about the origin.
+
+## If the site really is down
+
+Work outward, innermost first:
 
     sudo nginx -t
     sudo nginx -T 2>&1 | grep -nE 'server_name|certs/retrat|retratar_client_ip'
@@ -117,27 +140,18 @@ That leaves nginx on the Pi and the Cloudflare `retrat.ar` zone. Work outward:
     docker ps --filter name=retratar
     sudo ss -ltnp | grep -E ':(443|8082)'
 
-Then bypass each layer in turn, innermost first:
-
     # app directly — expect a redirect, and 404 for an unclaimed handle
     curl -sS -i -H 'Host: retrat.ar'       http://127.0.0.1:8082/ | head -1
     curl -sS -i -H 'Host: sebas.retrat.ar' http://127.0.0.1:8082/ | head -1
 
     # nginx directly, skipping Cloudflare (-k: the Origin CA cert is not
-    # publicly trusted, which is expected and not the bug)
+    # publicly trusted, which is expected and not a bug)
     curl -sSk -i -H 'Host: sebas.retrat.ar' https://127.0.0.1/ | head -1
 
-If the app answers and nginx does not, it is the server block or the cert path.
-If nginx answers and the public hostname still resets, it is the Cloudflare
-zone — compare `retrat.ar` against the working `retratar.com.ar` zone field by
-field: zone status, proxied A records for **both** the apex and the `*`
-wildcard, SSL/TLS mode, and any Rules. The wildcard is a separate record from
-the apex and is easy to miss; `sebas.retrat.ar` needs it.
-
-The likeliest single cause, given nothing was deliberately changed: nginx has
-no active `:443` server block matching `retrat.ar`, so SNI falls through to
-YunoHost's catch-all, which closes the connection without responding — which
-is exactly a reset after a completed handshake.
+App answers and nginx does not: the server block or the cert path. Nginx
+answers and the public hostname does not: the Cloudflare zone — compare it
+against the working `retratar.com.ar` zone field by field, including the
+wildcard A record, which is separate from the apex and is what `sebas` needs.
 
 ## Traps
 
