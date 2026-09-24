@@ -94,10 +94,18 @@ func sendMailWithDeadline(ctx context.Context, deadline time.Time, addr, host st
 	}
 	defer func() { _ = client.Close() }()
 
-	if ok, _ := client.Extension("STARTTLS"); ok {
+	switch ok, _ := client.Extension("STARTTLS"); {
+	case ok:
 		if err = client.StartTLS(&tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}); err != nil {
 			return fmt.Errorf("starttls: %w", err)
 		}
+	case !isLoopbackHost(host):
+		// smtp.PlainAuth already refuses to hand over credentials on a
+		// plaintext connection to a non-localhost server, so a downgrade here
+		// cannot leak the password — but it would otherwise fail silently as
+		// "mail not sent" with no indication why. A relay we send real mail
+		// through must offer STARTTLS; say so instead of guessing later.
+		return fmt.Errorf("relay at %s does not offer STARTTLS", host)
 	}
 
 	if err = client.Auth(auth); err != nil {
@@ -109,7 +117,7 @@ func sendMailWithDeadline(ctx context.Context, deadline time.Time, addr, host st
 	}
 	for _, rcpt := range to {
 		if err = client.Rcpt(rcpt); err != nil {
-			return fmt.Errorf("rcpt to %s: %w", rcpt, err)
+			return fmt.Errorf("rcpt to %s: %w", domainOf(rcpt), err)
 		}
 	}
 
@@ -125,6 +133,27 @@ func sendMailWithDeadline(ctx context.Context, deadline time.Time, addr, host st
 	}
 
 	return client.Quit()
+}
+
+// isLoopbackHost reports whether host names the local machine, the one case
+// where an unencrypted SMTP conversation is acceptable (a relay running on
+// the same box, as in local development).
+func isLoopbackHost(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// domainOf returns the domain part of an email address, so an error that
+// wraps a recipient never carries the local part into logs.
+func domainOf(addr string) string {
+	_, domain, ok := strings.Cut(addr, "@")
+	if !ok {
+		return "unknown"
+	}
+	return domain
 }
 
 // buildMessage assembles a minimal plain-text RFC 5322 message.

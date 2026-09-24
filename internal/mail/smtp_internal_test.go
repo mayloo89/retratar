@@ -1,9 +1,12 @@
 package mail
 
 import (
+	"bufio"
 	"context"
 	"errors"
+	"net"
 	"net/smtp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -132,5 +135,150 @@ func TestSMTPSenderWrapsRelayError(t *testing.T) {
 	err := sender.Send(t.Context(), "ana@example.com", "Sign in", "https://retratar.com.ar/login/abc")
 	if !errors.Is(err, relayErr) {
 		t.Fatalf("Send() error = %v, want it to wrap %v", err, relayErr)
+	}
+}
+
+// fakeSMTPServer speaks just enough SMTP to drive sendMailWithDeadline
+// through a real connection, rather than through the substituted sendFunc
+// the tests above use. It handles exactly one connection.
+//
+//   - offerSTARTTLS: whether EHLO advertises the extension. Kept false in
+//     every test here: a real STARTTLS handshake needs a TLS server, which
+//     these tests don't need to prove the plaintext-refusal or the
+//     recipient-redaction behaviour.
+//   - rcptCode/rcptMsg: the response RCPT TO gets. A non-2xx code stops the
+//     exchange there, which is all these tests need.
+func fakeSMTPServer(t *testing.T, offerSTARTTLS bool, rcptCode int, rcptMsg string) string {
+	t.Helper()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+
+		r := bufio.NewReader(conn)
+		reply := func(line string) { _, _ = conn.Write([]byte(line + "\r\n")) }
+
+		reply("220 fake.example ESMTP")
+		if _, err = r.ReadString('\n'); err != nil { // EHLO
+			return
+		}
+		if offerSTARTTLS {
+			reply("250-fake.example")
+			reply("250-STARTTLS")
+			reply("250 AUTH PLAIN")
+		} else {
+			reply("250-fake.example")
+			reply("250 AUTH PLAIN")
+		}
+
+		line, err := r.ReadString('\n') // AUTH PLAIN ... (absent if the caller aborts after EHLO)
+		if err != nil {
+			return
+		}
+		if !strings.HasPrefix(strings.ToUpper(line), "AUTH PLAIN") {
+			return
+		}
+		reply("235 2.7.0 Authentication successful")
+
+		if line, err = r.ReadString('\n'); err != nil || !strings.HasPrefix(strings.ToUpper(line), "MAIL FROM") { // MAIL FROM
+			return
+		}
+		reply("250 OK")
+
+		if line, err = r.ReadString('\n'); err != nil || !strings.HasPrefix(strings.ToUpper(line), "RCPT TO") { // RCPT TO
+			return
+		}
+		reply(strconv.Itoa(rcptCode) + " " + rcptMsg)
+		if rcptCode/100 != 2 {
+			return
+		}
+
+		if line, err = r.ReadString('\n'); err != nil || !strings.HasPrefix(strings.ToUpper(line), "DATA") { // DATA
+			return
+		}
+		reply("354 go ahead")
+		for {
+			line, err = r.ReadString('\n')
+			if err != nil || line == ".\r\n" {
+				break
+			}
+		}
+		reply("250 message accepted")
+
+		if line, err = r.ReadString('\n'); err != nil || !strings.HasPrefix(strings.ToUpper(line), "QUIT") { // QUIT
+			return
+		}
+		reply("221 bye")
+	}()
+
+	return ln.Addr().String()
+}
+
+// TestSendMailWithDeadlineRequiresSTARTTLSForRemoteHost proves a relay that
+// does not offer STARTTLS is refused when the host is not loopback, instead
+// of silently sending credentials and mail in clear (which smtp.PlainAuth
+// already blocks) or failing with no explanation.
+func TestSendMailWithDeadlineRequiresSTARTTLSForRemoteHost(t *testing.T) {
+	t.Parallel()
+
+	addr := fakeSMTPServer(t, false, 0, "")
+
+	err := sendMailWithDeadline(t.Context(), time.Now().Add(5*time.Second), addr, "mail.example.com",
+		smtp.PlainAuth("", "user", "pass", "mail.example.com"),
+		"from@retratar.com.ar", []string{"ana@example.com"}, []byte("body"))
+	if err == nil {
+		t.Fatal("sendMailWithDeadline() error = nil, want a STARTTLS-required error")
+	}
+	if !strings.Contains(err.Error(), "STARTTLS") {
+		t.Errorf("error = %v, want it to mention STARTTLS", err)
+	}
+	if strings.Contains(err.Error(), "ana@example.com") {
+		t.Errorf("error = %v, must not contain the recipient address", err)
+	}
+}
+
+// TestSendMailWithDeadlineAllowsPlaintextForLoopbackHost proves a loopback
+// relay (the local dev fallback) is not held to the STARTTLS requirement.
+func TestSendMailWithDeadlineAllowsPlaintextForLoopbackHost(t *testing.T) {
+	t.Parallel()
+
+	addr := fakeSMTPServer(t, false, 250, "OK")
+
+	err := sendMailWithDeadline(t.Context(), time.Now().Add(5*time.Second), addr, "localhost",
+		smtp.PlainAuth("", "user", "pass", "localhost"),
+		"from@retratar.com.ar", []string{"ana@example.com"}, []byte("body"))
+	if err != nil {
+		t.Fatalf("sendMailWithDeadline() error = %v, want nil", err)
+	}
+}
+
+// TestSendMailWithDeadlineRedactsRecipientInRcptError proves a RCPT failure
+// never puts the full recipient address in the returned error: only the
+// domain, per F7d.
+func TestSendMailWithDeadlineRedactsRecipientInRcptError(t *testing.T) {
+	t.Parallel()
+
+	addr := fakeSMTPServer(t, false, 550, "no such user")
+
+	err := sendMailWithDeadline(t.Context(), time.Now().Add(5*time.Second), addr, "localhost",
+		smtp.PlainAuth("", "user", "pass", "localhost"),
+		"from@retratar.com.ar", []string{"ana@example.com"}, []byte("body"))
+	if err == nil {
+		t.Fatal("sendMailWithDeadline() error = nil, want the RCPT failure")
+	}
+	if strings.Contains(err.Error(), "ana@example.com") || strings.Contains(err.Error(), "ana@") {
+		t.Errorf("error = %v, must not contain the recipient's local part", err)
+	}
+	if !strings.Contains(err.Error(), "example.com") {
+		t.Errorf("error = %v, want it to name the recipient's domain", err)
 	}
 }
