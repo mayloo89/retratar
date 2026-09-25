@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -65,10 +66,22 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 // Unwrap lets http.ResponseController reach the underlying writer.
 func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
 
+// redactedPath returns path with a login token replaced by a placeholder, so
+// that request and panic logs never carry the raw token: the token is a path
+// segment (GET/POST /login/{token}), not a query parameter.
+func redactedPath(path string) string {
+	const prefix = "/login/"
+	if rest, ok := strings.CutPrefix(path, prefix); ok && rest != "" && !strings.Contains(rest, "/") {
+		return prefix + "{token}"
+	}
+	return path
+}
+
 // RequestLogger logs one line per request after it completes.
 //
-// The query string is never logged: magic-link tokens travel in it, and a log
-// file is a place tokens must not be.
+// The logged path is redacted by [redactedPath]: magic-link tokens travel in
+// the path, not the query string, and a log file is a place tokens must not
+// be.
 func RequestLogger(logger *slog.Logger) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -84,7 +97,7 @@ func RequestLogger(logger *slog.Logger) Middleware {
 				slog.String("request_id", RequestIDFrom(r.Context())),
 				slog.String("method", r.Method),
 				slog.String("host", r.Host),
-				slog.String("path", r.URL.Path),
+				slog.String("path", redactedPath(r.URL.Path)),
 				slog.Int("status", rec.status),
 				slog.Int64("bytes", rec.bytes),
 				slog.Duration("duration", time.Since(start)),
@@ -111,7 +124,7 @@ func Recover(logger *slog.Logger) Middleware {
 				logger.LogAttrs(r.Context(), slog.LevelError, "panic recovered",
 					slog.String("request_id", RequestIDFrom(r.Context())),
 					slog.Any("panic", v),
-					slog.String("path", r.URL.Path),
+					slog.String("path", redactedPath(r.URL.Path)),
 				)
 				http.Error(w, "internal server error", http.StatusInternalServerError)
 			}()
