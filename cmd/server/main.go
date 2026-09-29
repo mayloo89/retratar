@@ -31,7 +31,9 @@ import (
 //
 // [config.Config.Validate] already refuses to construct a production Config
 // missing SMTP settings, so cfg.SMTP* are known non-empty here — there is no
-// failure path left to report.
+// failure path left to report. It also refuses a non-production Config with
+// a non-loopback ADDR, so the log-based fallback here is only ever reachable
+// with a loopback bind.
 func newMailSender(cfg config.Config, logger *slog.Logger) mail.Sender {
 	if cfg.IsProduction() {
 		return mail.NewSMTPSender(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUsername, cfg.SMTPPassword, cfg.MailFrom)

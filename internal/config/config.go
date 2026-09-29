@@ -96,7 +96,7 @@ func Load(getenv Getenv) (Config, error) {
 
 	cfg := Config{
 		Env:             Environment(cmp.Or(getenv("ENV"), string(EnvDevelopment))),
-		Addr:            cmp.Or(getenv("ADDR"), ":8080"),
+		Addr:            cmp.Or(getenv("ADDR"), "127.0.0.1:8080"),
 		AppHost:         cmp.Or(getenv("APP_HOST"), "app.localhost:8080"),
 		PagesHost:       cmp.Or(getenv("PAGES_HOST"), "pages.localhost:8080"),
 		DatabaseURL:     cmp.Or(getenv("DATABASE_URL"), defaultDatabaseURL),
@@ -169,6 +169,16 @@ func (c Config) Validate() error {
 				errs = append(errs, fmt.Errorf("%w: %s is required in production", ErrInvalidConfig, name))
 			}
 		}
+	} else if c.Addr != "" && !isLoopback(c.Addr) {
+		// Outside production, cmd/server's newMailSender falls back to
+		// mail.LogSender, which writes the full mail body — magic link
+		// included — to the process log. A publicly-bound ADDR paired with
+		// that fallback is the shape of a misconfigured production box (ENV
+		// dropped or never set), not a local dev box, so the combination is
+		// refused regardless of what ENV claims.
+		errs = append(errs, fmt.Errorf(
+			"%w: ADDR %q must be loopback outside production; the mail sender logs magic links",
+			ErrInsecureHosts, c.Addr))
 	}
 
 	// The session cookie is issued by AppHost. If PagesHost were AppHost or a

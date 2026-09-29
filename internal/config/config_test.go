@@ -262,9 +262,68 @@ func TestValidateRequiresSMTPInProduction(t *testing.T) {
 	// Development never requires a relay: mail is logged, not sent.
 	dev := complete
 	dev.Env = config.EnvDevelopment
+	dev.Addr = "127.0.0.1:8080"
 	dev.SMTPHost, dev.SMTPPort, dev.SMTPUsername, dev.SMTPPassword, dev.MailFrom = "", "", "", "", ""
 	if err := dev.Validate(); err != nil {
 		t.Fatalf("Validate() error = %v, want nil in development", err)
+	}
+}
+
+// TestValidateRejectsPublicAddrOutsideProduction guards the log-based mail
+// fallback: outside production, cmd/server logs the full mail body,
+// magic link included, so a publicly-bound ADDR there is refused.
+func TestValidateRejectsPublicAddrOutsideProduction(t *testing.T) {
+	t.Parallel()
+
+	base := config.Config{
+		Env:             config.EnvDevelopment,
+		AppHost:         "app.localhost:8080",
+		PagesHost:       "pages.localhost:8080",
+		DatabaseURL:     "postgres://u:p@127.0.0.1:5432/retratar?sslmode=disable",
+		AdminAddr:       "127.0.0.1:8081",
+		ShutdownTimeout: time.Second,
+	}
+
+	tests := []struct {
+		addr    string
+		wantErr error
+	}{
+		{"127.0.0.1:8080", nil},
+		{"localhost:8080", nil},
+		{"[::1]:8080", nil},
+		{":8080", config.ErrInsecureHosts},
+		{"0.0.0.0:8080", config.ErrInsecureHosts},
+		{"10.0.0.5:8080", config.ErrInsecureHosts},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.addr, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := base
+			cfg.Addr = tt.addr
+
+			err := cfg.Validate()
+			if tt.wantErr == nil && err != nil {
+				t.Fatalf("Validate() error = %v, want nil", err)
+			}
+			if tt.wantErr != nil && !errors.Is(err, tt.wantErr) {
+				t.Fatalf("Validate() error = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+
+	// The same public ADDR is fine in production: it is the SMTP relay path,
+	// not the log fallback, so this check does not apply.
+	prod := base
+	prod.Env = config.EnvProduction
+	prod.Addr = ":8080"
+	prod.AppHost, prod.PagesHost = "retratar.com.ar", "retrat.ar"
+	prod.DatabaseURL = "postgres://u:p@db.internal:5432/retratar"
+	prod.SMTPHost, prod.SMTPPort, prod.SMTPUsername, prod.SMTPPassword, prod.MailFrom =
+		"smtp.postmarkapp.com", "587", "token", "token", "noreply@retratar.com.ar"
+	if err := prod.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v, want nil in production", err)
 	}
 }
 
@@ -305,7 +364,7 @@ func TestValidateDatabaseURL(t *testing.T) {
 	t.Parallel()
 
 	base := config.Config{
-		Addr:            ":8080",
+		Addr:            "127.0.0.1:8080",
 		AppHost:         "retratar.com.ar",
 		PagesHost:       "retrat.ar",
 		AdminAddr:       "127.0.0.1:8081",
