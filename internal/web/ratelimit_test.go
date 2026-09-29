@@ -181,3 +181,26 @@ func TestRateLimit_SpoofedHeaderFromUntrustedPeerCannotPartition(t *testing.T) {
 		t.Fatalf("last status = %d, want 429: a rotating spoofed header partitioned the bucket", lastCode)
 	}
 }
+
+// TestClientNetwork48_GroupsSlash64sInOneSlash48: the coarse key must treat
+// every /64 of one allocation as one client, tell allocations apart, and leave
+// IPv4 alone.
+func TestClientNetwork48_GroupsSlash64sInOneSlash48(t *testing.T) {
+	keyOf := func(remote string) string {
+		req := httptest.NewRequest(http.MethodPost, "/login", nil)
+		req.RemoteAddr = remote
+		return clientNetwork48(req)
+	}
+
+	a := keyOf("[2001:db8:1:1::1]:5000")
+	b := keyOf("[2001:db8:1:ffff::9]:5000")
+	if a != b {
+		t.Errorf("two /64s in one /48 keyed %q and %q, want the same key", a, b)
+	}
+	if other := keyOf("[2001:db8:2:1::1]:5000"); other == a {
+		t.Errorf("different /48s share key %q, want distinct keys", other)
+	}
+	if got := keyOf("203.0.113.7:5000"); got != "203.0.113.7" {
+		t.Errorf("IPv4 key = %q, want the full address 203.0.113.7", got)
+	}
+}
