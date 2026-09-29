@@ -294,6 +294,14 @@ func NormaliseEmail(raw string) (string, error) {
 		return "", ErrInvalidEmail
 	}
 
+	// ParseAddress unquotes the local part, so `"a b"@example.com` comes back
+	// without its quotes; only the trimmed input still shows them. Nobody
+	// legitimate needs a quoted local part, and they put unusual addresses in
+	// front of the mail relay.
+	if strings.Contains(trimmed, "\"") {
+		return "", ErrInvalidEmail
+	}
+
 	address := strings.ToLower(parsed.Address)
 
 	// ParseAddress also accepts `ana@localhost`, which is valid and useless

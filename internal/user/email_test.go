@@ -57,6 +57,11 @@ func TestNormaliseEmailRejects(t *testing.T) {
 		// A display name would let one address arrive in two spellings, and
 		// would put text somebody else chose into anything that echoes it back.
 		{name: "display name", in: "Ana <ana@example.com>"},
+		// ParseAddress unquotes these, so the quotes are gone by the time the
+		// parsed address is inspected; nobody legitimate needs them, and they
+		// put unusual addresses in front of the mail relay.
+		{name: "quoted local part with space", in: "\"a b\"@example.com"},
+		{name: "quoted local part", in: "\"ana\"@example.com"},
 		{name: "longer than SMTP carries", in: longAddress()},
 	}
 
