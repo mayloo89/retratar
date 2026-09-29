@@ -69,11 +69,17 @@ func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter 
 // redactedPath returns path with a login token replaced by a placeholder, so
 // that request and panic logs never carry the raw token: the token is a path
 // segment (GET/POST /login/{token}), not a query parameter.
+//
+// It also strips CR and LF: r.URL.Path is already percent-decoded, so a
+// request for "/%0d%0afake: line" arrives with real newline bytes in the
+// path, which a log entry must not repeat verbatim (CWE-117 log forging).
 func redactedPath(path string) string {
 	const prefix = "/login/"
 	if rest, ok := strings.CutPrefix(path, prefix); ok && rest != "" && !strings.Contains(rest, "/") {
 		return prefix + "{token}"
 	}
+	path = strings.ReplaceAll(path, "\n", "")
+	path = strings.ReplaceAll(path, "\r", "")
 	return path
 }
 

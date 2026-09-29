@@ -58,6 +58,34 @@ func TestRecoverRedactsLoginToken(t *testing.T) {
 	}
 }
 
+func TestRequestLoggerStripsCRLFFromPath(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+
+	handler := web.RequestLogger(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// r.URL.Path is already percent-decoded, so a request for /%0d%0afake
+	// arrives with real CR/LF bytes in the path — simulate that directly,
+	// since httptest.NewRequest would re-encode a literal \r\n in the target.
+	req := httptest.NewRequest(http.MethodGet, "/mood", nil)
+	req.URL.Path = "/mood\r\nfake_field: injected"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	out := buf.String()
+	if strings.Contains(out, "\r") {
+		t.Fatalf("log contains a raw CR from the path: %q", out)
+	}
+	if strings.Count(out, "\n") != 1 {
+		t.Fatalf("log entry split across multiple lines: %q", out)
+	}
+	if !strings.Contains(out, "/moodfake_field: injected") {
+		t.Fatalf("log missing the sanitised path: %q", out)
+	}
+}
+
 func TestRequestLoggerLeavesOtherPathsAlone(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
