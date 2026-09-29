@@ -1,8 +1,10 @@
 package web_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -273,5 +275,57 @@ func TestLoginRequest_ByteIdenticalForKnownAndUnknownEmail(t *testing.T) {
 	}
 	if string(knownBody) != string(unknownBody) {
 		t.Fatalf("body differs:\nknown   = %q\nunknown = %q", knownBody, unknownBody)
+	}
+}
+
+// TestLoginRequest_OverBudgetIsByteIdenticalToSuccess: the fourth request for
+// an address sends nothing, yet must look exactly like the first, or the
+// budget becomes a way to learn who was asked about recently.
+func TestLoginRequest_OverBudgetIsByteIdenticalToSuccess(t *testing.T) {
+	srv, sender := newLoginServer(t)
+	h := srv.Handler()
+	const host = "retratar.com.ar"
+
+	post := func(i int) (status int, contentType string, body []byte) {
+		t.Helper()
+		// A distinct peer per request keeps the per-IP limiter out of the way.
+		remote := fmt.Sprintf("203.0.113.%d:5000", 100+i)
+		form := strings.NewReader(url.Values{"email": {"target@example.com"}}.Encode())
+		resp := requestFrom(t, h, remote, http.MethodPost, host, "/login", form)
+		defer resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
+		b, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		return resp.StatusCode, resp.Header.Get("Content-Type"), b
+	}
+
+	firstStatus, firstType, firstBody := post(0)
+
+	var thirdMail string
+	for i := 1; i < user.LoginBudget; i++ {
+		post(i)
+	}
+	sender.mu.Lock()
+	thirdMail = sender.body
+	sender.mu.Unlock()
+
+	status, contentType, body := post(user.LoginBudget)
+
+	if status != firstStatus {
+		t.Errorf("over-budget status = %d, want %d", status, firstStatus)
+	}
+	if contentType != firstType {
+		t.Errorf("over-budget Content-Type = %q, want %q", contentType, firstType)
+	}
+	if !bytes.Equal(body, firstBody) {
+		t.Errorf("over-budget body differs from the first response:\nfirst = %q\nover  = %q", firstBody, body)
+	}
+
+	sender.mu.Lock()
+	last := sender.body
+	sender.mu.Unlock()
+	if last != thirdMail {
+		t.Errorf("a mail was sent for the over-budget request:\nthird = %q\nlast  = %q", thirdMail, last)
 	}
 }

@@ -36,6 +36,20 @@ const uniqueViolation = "23505"
 // and somebody switching to their laptop to open it.
 const TokenTTL = 15 * time.Minute
 
+// LoginBudget is how many sign-in links one address may be sent per
+// [LoginBudgetWindow].
+//
+// Three covers the honest cases: the mail did not arrive, the person asked
+// again, and asked once more. Anything past that is a script or a mistake, and
+// the budget is what bounds the harm: whoever is aimed at an inbox gets at most
+// this many emails per window, however many IPs the requests come from.
+const LoginBudget = 3
+
+// LoginBudgetWindow is the rolling period [LoginBudget] is counted over. An
+// hour is long enough that a flood stays small and short enough that someone
+// who burned their budget is not locked out for the rest of the day.
+const LoginBudgetWindow = time.Hour
+
 // maxEmailLength is the longest address SMTP is required to carry.
 const maxEmailLength = 254
 
@@ -87,6 +101,12 @@ func NewService(pool *pgxpool.Pool) *Service {
 // It does not create an account and does not report whether one exists. A
 // caller that reveals the difference — a different response for a known
 // address, or a faster one — hands out a list of who has signed up.
+//
+// An address may be sent [LoginBudget] links per [LoginBudgetWindow]. Past
+// that the call returns [ErrLoginBudgetExceeded] and changes nothing: in
+// particular it leaves the outstanding links alive, so an attacker can exhaust
+// someone's budget but cannot use the endpoint to kill the link they already
+// hold.
 func (s *Service) RequestLogin(ctx context.Context, email string) (string, error) {
 	address, err := NormaliseEmail(email)
 	if err != nil {
@@ -104,6 +124,24 @@ func (s *Service) RequestLogin(ctx context.Context, email string) (string, error
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	q := s.queries.WithTx(tx)
+
+	// The budget check runs before anything is invalidated: an over-budget
+	// request must not retire the address's live link. The advisory lock
+	// serialises requests for one address, so two arriving together cannot both
+	// read a count under the budget and both mint.
+	if err = q.LockLoginAddress(ctx, address); err != nil {
+		return "", fmt.Errorf("lock login address: %w", err)
+	}
+	recent, err := q.CountRecentLoginTokens(ctx, store.CountRecentLoginTokensParams{
+		Email:         address,
+		WindowSeconds: LoginBudgetWindow.Seconds(),
+	})
+	if err != nil {
+		return "", fmt.Errorf("count recent login tokens: %w", err)
+	}
+	if recent >= LoginBudget {
+		return "", ErrLoginBudgetExceeded
+	}
 
 	// Retiring the outstanding tokens and issuing the new one share a
 	// transaction so that a failure cannot leave an address with no working
