@@ -10,50 +10,23 @@ comments of the files they belong to and are not repeated here:
 - `docs/decisions/0004-*` and `0005-*` — why the topology is what it is
 
 This file covers the things you only learn the second time: how to re-deploy,
-how to diagnose the surface that is currently down, and the traps that have
+how to tell a real outage from a network in the way, and the traps that have
 already cost an afternoon each.
 
 ## The box
 
-`ssh retratar-pi` → `192.168.0.87`. **LAN-only.** Nothing here can be done from
-off-network; there is no public SSH and no VPN. The checkout lives at
-`~/retratar` and the app runs from it via Docker Compose.
-
-## Current state
-
-Last verified 2026-09-15.
-
-| surface | state |
-|---|---|
-| `retratar.com.ar` | serving, HTTP 200 |
-| `retrat.ar`, `*.retrat.ar` | **down** — TCP connects, TLS completes, the HTTP request is reset |
-
-Both served 200 on 2026-09-08, so this is a regression, not a setup that never
-worked.
-
-**The running deploy predates PR #10.** The Pi was cloned from
-`feat/postmark-smtp-and-pi-deploy` while that branch was unmerged and has not
-been re-deployed since. The container and the installed nginx configs are both
-older than `develop`.
-
-The consequence is a live security gap, not a cosmetic drift: **neither layer
-of the rate limiting is on the box.** `POST /login` on the live host mints a
-magic link and hands it to the SMTP relay for any caller, unthrottled — an
-email flood aimed at someone else's inbox and a bill on the relay. Procedure A
-is the fix. Treat it as the reason to open the laptop, not as tidying.
+The host is reachable only from its LAN — there is no public SSH and no VPN —
+so everything below needs LAN access. Commands assume a shell on the host,
+inside the repo checkout.
 
 ## Procedure A — re-deploy from `develop`
 
 Do this first, and in this order: nginx before the app, because a broken nginx
 config is the failure that leaves you with nothing serving at all.
 
-    ssh retratar-pi
-    cd ~/retratar
+    cd <checkout>
     git fetch origin
     git checkout develop && git pull --ff-only
-
-The branch the Pi was originally deployed from no longer exists on origin; it
-was squash-merged and pruned. A stale local copy of it is harmless.
 
 **1. nginx configs. Install both, in one step.**
 
@@ -81,8 +54,8 @@ Never `systemctl reload` without `nginx -t &&` in front of it.
 `--build` matters — without it Compose reuses the old image and the deploy
 silently does nothing.
 
-**3. Verify the rate limiter is actually live.** This is the point of the
-exercise, so check it rather than assuming:
+**3. Verify the rate limiter is actually live.** Check it rather than
+assuming:
 
     for i in $(seq 1 8); do
       curl -s -o /dev/null -w "%{http_code} " \
@@ -95,49 +68,23 @@ back to step 2. Use a throwaway address: every non-429 sends a real email.
 
 This hits the app on loopback, so it tests the Go limiter only. The nginx
 `limit_req` layer is a separate check — make the same requests through the
-public hostname once the surface is back up.
+public hostname from a network without DNS or TLS filtering.
 
-## Procedure B — diagnose the `retrat.ar` reset
+## Procedure B — before calling it an outage
 
-What is already ruled out, from off-network, so you do not repeat it:
+Some networks (corporate or ISP DNS/TLS filters) intercept these domains and
+reset connections after the handshake — at first glance indistinguishable from
+an origin fault. Present the certificate first:
 
-- **Not DNS.** Both zones are on Cloudflare nameservers.
-- **Not certificates.** The edge serves a valid cert with SANs `retrat.ar` and
-  `*.retrat.ar`; the handshake completes and verifies.
-- **Not the network path or an edge IP.** `retratar.com.ar` succeeds from both
-  Cloudflare edge IPs and `retrat.ar` fails from both.
-- **Not the Go app.** The app answers `Host: retrat.ar` with a redirect and an
-  unclaimed handle with 404. It has no code path that resets a connection.
+    openssl s_client -connect <host>:443 -servername <host> </dev/null 2>/dev/null | openssl x509 -noout -issuer
 
-That leaves nginx on the Pi and the Cloudflare `retrat.ar` zone. Work outward:
+If the issuer is not the expected CA for the edge, you are looking at a
+middlebox, not the deploy; check from another network (e.g. a phone hotspot).
+Only then work inward — app on loopback, nginx on loopback, then the Cloudflare
+zone settings:
 
-    sudo nginx -t
-    sudo nginx -T 2>&1 | grep -nE 'server_name|certs/retrat|retratar_client_ip'
-    ls -l /etc/nginx/certs/retrat.ar/
-    docker ps --filter name=retratar
-    sudo ss -ltnp | grep -E ':(443|8082)'
-
-Then bypass each layer in turn, innermost first:
-
-    # app directly — expect a redirect, and 404 for an unclaimed handle
-    curl -sS -i -H 'Host: retrat.ar'       http://127.0.0.1:8082/ | head -1
-    curl -sS -i -H 'Host: sebas.retrat.ar' http://127.0.0.1:8082/ | head -1
-
-    # nginx directly, skipping Cloudflare (-k: the Origin CA cert is not
-    # publicly trusted, which is expected and not the bug)
-    curl -sSk -i -H 'Host: sebas.retrat.ar' https://127.0.0.1/ | head -1
-
-If the app answers and nginx does not, it is the server block or the cert path.
-If nginx answers and the public hostname still resets, it is the Cloudflare
-zone — compare `retrat.ar` against the working `retratar.com.ar` zone field by
-field: zone status, proxied A records for **both** the apex and the `*`
-wildcard, SSL/TLS mode, and any Rules. The wildcard is a separate record from
-the apex and is easy to miss; `sebas.retrat.ar` needs it.
-
-The likeliest single cause, given nothing was deliberately changed: nginx has
-no active `:443` server block matching `retrat.ar`, so SNI falls through to
-YunoHost's catch-all, which closes the connection without responding — which
-is exactly a reset after a completed handshake.
+    curl -sS -i -H 'Host: example.retrat.ar' http://127.0.0.1:8082/ | head -1
+    curl -sSk -i -H 'Host: example.retrat.ar' https://127.0.0.1/ | head -1
 
 ## Traps
 
@@ -145,8 +92,8 @@ Each of these has already been paid for once.
 
 **Compose project name.** `name: retratar` in `docker-compose.yml` is load
 bearing. Compose otherwise derives the project name from the compose file's
-parent directory — `deploy` — which collides with the other Docker stack on
-this Pi whose compose file is also in a directory called `deploy`. Without the
+parent directory — `deploy` — which collides with any other Compose project on
+the same host whose file also lives in a directory called `deploy`. Without the
 explicit name, `up` treats that project's containers as orphans and creates
 volumes inside its namespace.
 
@@ -170,5 +117,5 @@ binary that dies with `exec format error` on the Pi. `build.args:
 TARGETARCH: arm64` must stay set.
 
 **Secrets.** `deploy/retratar.env` (Postgres password, SMTP credentials) and
-`deploy/postgres-tls/` are Pi-local and gitignored. They are not in the repo
-and not backed up anywhere. Do not `git clean -x` this checkout.
+`deploy/postgres-tls/` are Pi-local and gitignored. Keep an encrypted copy
+off the host. Do not `git clean -x` this checkout.

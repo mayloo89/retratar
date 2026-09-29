@@ -14,7 +14,7 @@ user — `sudo -u postgres psql` is not in it, for any command, so creating the
 `retratar` role and database this way is not possible over SSH without asking
 for a sudoers change. `docker`, by contrast, needs no `sudo` at all: the
 deploying user is already in the `docker` group, which is also how
-`circl.unlug.ar` already runs on this same Pi — its own Postgres is a
+another service already runs on this same Pi — its own Postgres is a
 container, entirely separate from the native `postgresql@15-main` service.
 
 ## Decision

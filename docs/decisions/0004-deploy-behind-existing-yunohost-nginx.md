@@ -10,16 +10,14 @@ Status: accepted
 `*.retrat.ar`, normally for `retratar.com.ar`.
 
 The actual first deploy target is a Raspberry Pi that already runs YunoHost
-for several other services (Nextcloud, Pixelfed, XMPP, a hand-rolled app on
-`circl.unlug.ar`). YunoHost's own nginx already owns 80 and 443 and manages
-certificates through Let's Encrypt for each domain it's told about. Caddy
+for several other services. YunoHost's own nginx already owns 80 and 443 and
+manages certificates through Let's Encrypt for each domain it's told about. Caddy
 cannot bind those ports too, so it cannot run there as designed.
 
 Both `retrat.ar` and `retratar.com.ar` are registered at NIC.ar but, unlike the
-Pi's other domains, had no DNS delegation yet. The user's other domains on
-this Pi (`unlug.ar`, `circl.ar`) are both delegated to Cloudflare, and
-`circl.ar` is served proxied through it. `PLAN.md`'s own architecture section
-already wanted Cloudflare in front for CDN and CSAM scanning, so putting these
+Pi's other domains, had no DNS delegation yet. Other domains on this Pi are
+already delegated to Cloudflare and served proxied through it. `PLAN.md`'s own
+architecture section already wanted Cloudflare in front for CDN and CSAM scanning, so putting these
 two domains on Cloudflare too — proxied — is not a new dependency, it's using
 one already in play.
 
