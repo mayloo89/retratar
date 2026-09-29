@@ -263,11 +263,13 @@ func TestSendMailWithDeadlineAllowsPlaintextForLoopbackHost(t *testing.T) {
 
 // TestSendMailWithDeadlineRedactsRecipientInRcptError proves a RCPT failure
 // never puts the full recipient address in the returned error: only the
-// domain, per F7d.
+// domain, per F7d. The relay's response text echoes the address back
+// (a real pattern: "550 <addr>: recipient rejected"), so this also proves
+// the fix strips the relay's own wording, not just the address we pass in.
 func TestSendMailWithDeadlineRedactsRecipientInRcptError(t *testing.T) {
 	t.Parallel()
 
-	addr := fakeSMTPServer(t, false, 550, "no such user")
+	addr := fakeSMTPServer(t, false, 550, "<ana@example.com>: recipient rejected")
 
 	err := sendMailWithDeadline(t.Context(), time.Now().Add(5*time.Second), addr, "localhost",
 		smtp.PlainAuth("", "user", "pass", "localhost"),
@@ -280,5 +282,8 @@ func TestSendMailWithDeadlineRedactsRecipientInRcptError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "example.com") {
 		t.Errorf("error = %v, want it to name the recipient's domain", err)
+	}
+	if !strings.Contains(err.Error(), "550") {
+		t.Errorf("error = %v, want it to keep the SMTP status code", err)
 	}
 }

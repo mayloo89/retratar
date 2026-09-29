@@ -3,9 +3,11 @@ package mail
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"net/smtp"
+	"net/textproto"
 	"strings"
 	"time"
 )
@@ -117,7 +119,7 @@ func sendMailWithDeadline(ctx context.Context, deadline time.Time, addr, host st
 	}
 	for _, rcpt := range to {
 		if err = client.Rcpt(rcpt); err != nil {
-			return fmt.Errorf("rcpt to %s: %w", domainOf(rcpt), err)
+			return fmt.Errorf("rcpt to %s: %s", domainOf(rcpt), smtpStatus(err))
 		}
 	}
 
@@ -154,6 +156,20 @@ func domainOf(addr string) string {
 		return "unknown"
 	}
 	return domain
+}
+
+// smtpStatus reduces a RCPT failure to its numeric SMTP status, discarding
+// the relay's response text. A relay's rejection message is not ours to log
+// as-is: some relays echo the rejected address back into it (for example
+// "550 <ana@example.com>: recipient rejected"), which would put it in the
+// error even though [domainOf] already stripped it from the address we
+// interpolate ourselves.
+func smtpStatus(err error) string {
+	var proto *textproto.Error
+	if errors.As(err, &proto) {
+		return fmt.Sprintf("smtp status %d", proto.Code)
+	}
+	return "rejected"
 }
 
 // buildMessage assembles a minimal plain-text RFC 5322 message.

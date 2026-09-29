@@ -58,6 +58,28 @@ func TestRecoverRedactsLoginToken(t *testing.T) {
 	}
 }
 
+func TestRequestLoggerRedactsLoginTokenWithTrailingSegment(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+
+	handler := web.RequestLogger(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+
+	const token = "super-secret-token"
+	req := httptest.NewRequest(http.MethodGet, "/login/"+token+"/extra", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	out := buf.String()
+	if strings.Contains(out, token) {
+		t.Fatalf("log contains raw token when a path segment follows it: %s", out)
+	}
+	if !strings.Contains(out, "/login/{token}/extra") {
+		t.Fatalf("log missing redacted path: %s", out)
+	}
+}
+
 func TestRequestLoggerStripsCRLFFromPath(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
