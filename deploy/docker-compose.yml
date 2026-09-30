@@ -1,10 +1,9 @@
 # Production deploy: retratar's own Postgres + the app, both in Docker.
 #
-# Runs alongside the Pi's other Docker-based services (see circl.unlug.ar's
-# own compose stack) without touching YunoHost's sudo-restricted native
-# Postgres at all — that restriction is exactly why this exists instead of a
-# bare systemd binary against a native `postgresql` role. See
-# docs/decisions/0004-deploy-behind-existing-yunohost-nginx.md.
+# Runs alongside any other Docker-based services on the host without touching
+# YunoHost's sudo-restricted native Postgres at all — that restriction is
+# exactly why this exists instead of a bare systemd binary against a native
+# `postgresql` role. See docs/decisions/0004-deploy-behind-existing-yunohost-nginx.md.
 #
 # The app container uses `network_mode: host`: it lets DATABASE_URL stay a
 # literal 127.0.0.1 connection, so nginx's `proxy_pass http://127.0.0.1:8082`
@@ -57,10 +56,9 @@
 #
 # `name:` below is not decoration. Compose otherwise derives the project name
 # from this file's parent directory — "deploy" — which collides with any
-# other project whose compose file also lives in a directory called `deploy`
-# (circl.unlug.ar's does, on this same Pi). Without an explicit name, `up`
-# here attaches to that project's containers as "orphans" and can create
-# volumes inside its namespace. Ask why before renaming or removing this.
+# other project whose compose file also lives in a directory called `deploy`.
+# Without an explicit name, `up` here attaches to that project's containers as
+# "orphans" and can create volumes inside its namespace. Ask why before renaming or removing this.
 name: retratar
 
 services:
