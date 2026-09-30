@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/mayloo89/retratar/internal/mood"
+	"github.com/mayloo89/retratar/internal/ogcard"
 	"github.com/mayloo89/retratar/internal/user"
 )
 
@@ -23,6 +24,17 @@ type pageData struct {
 	MoodClass string
 	MoodLabel string
 	MoodNote  string
+
+	// OGURL and OGImageURL are absolute — an og:image scrapers must resolve
+	// without any base URL of their own to resolve it against. See
+	// [config.Config.PageBaseURL].
+	OGURL string
+	// OGImageURL and OGDescription each feed the OG meta tags; page.html
+	// also reuses OGDescription as the visible empty-state paragraph
+	// ("Todavía no eligió...") rather than hardcoding that sentence a
+	// second time — see [ogcard.EmptyStateText], its one source.
+	OGImageURL    string
+	OGDescription string
 }
 
 // handlePage renders the public page for the handle resolved from the
@@ -45,7 +57,14 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := pageData{Handle: u.Handle, MoodClass: "none"}
+	base := s.Config.PageBaseURL(u.Handle)
+	data := pageData{
+		Handle:        u.Handle,
+		MoodClass:     "none",
+		OGURL:         base + "/",
+		OGImageURL:    base + "/og.png",
+		OGDescription: ogcard.EmptyStateText,
+	}
 
 	m, err := s.Moods.CurrentMood(r.Context(), u.ID)
 	switch {
@@ -54,6 +73,10 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 		data.MoodClass = string(m.Key)
 		data.MoodLabel = m.Key.Label()
 		data.MoodNote = m.Note
+		data.OGDescription = m.Key.Label()
+		if m.Note != "" {
+			data.OGDescription += ": " + m.Note
+		}
 	case errors.Is(err, mood.ErrNoMood):
 		// No mood set yet — data already carries the empty state.
 	default:

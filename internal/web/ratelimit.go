@@ -41,6 +41,16 @@ const (
 	// it.
 	limiterIdleTTL = 10 * time.Minute
 
+	// ogRateBurst and ogRateRefill bound GET /og.png, the one read route
+	// that is expensive enough to need its own limiter: each request
+	// rasterises text and encodes a 1200x630 PNG on a Raspberry Pi, for an
+	// unauthenticated caller. It gets a separate rateLimiter instance from
+	// writes, with a looser budget than the write routes — a burst of link
+	// pastes across several OG-scraping platforms at once is legitimate
+	// traffic, an unbounded script hammering it is not.
+	ogRateBurst  = 30
+	ogRateRefill = 5 * time.Second
+
 	// limiterMaxBuckets is the hard ceiling on the per-IP map. It is only
 	// reached under an attack far larger than this site's organic traffic;
 	// see [rateLimiter.allow] for what happens then.
