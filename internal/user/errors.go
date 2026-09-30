@@ -7,6 +7,15 @@ var (
 	// deliverable. It says nothing about whether an account exists.
 	ErrInvalidEmail = errors.New("invalid email address")
 
+	// ErrLoginBudgetExceeded means the address has already been sent
+	// [LoginBudget] links inside [LoginBudgetWindow], so no new one was minted.
+	//
+	// Callers must not reveal it to the requester. The response has to be
+	// indistinguishable from a successful request, or the budget becomes a way
+	// to probe which addresses have been asked about recently; the handler
+	// logs it and answers as usual.
+	ErrLoginBudgetExceeded = errors.New("too many sign-in links requested for this address")
+
 	// ErrInvalidToken means a magic link cannot be used. It covers three
 	// distinct facts deliberately: the token never existed, it has expired, or
 	// it has already been spent.

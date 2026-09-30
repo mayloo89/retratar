@@ -1,8 +1,10 @@
 package web_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -101,8 +103,10 @@ func findCookie(resp *http.Response, name string) *http.Cookie {
 
 // completeLogin drives a full magic-link round trip for address: request a
 // link, fetch the confirmation page for its nonce cookie, then post the
-// confirmation. It returns the session cookie the last step issues.
-func completeLogin(t *testing.T, h http.Handler, host string, sender *stubSender, baseURL, address string) *http.Cookie {
+// confirmation. It returns the session cookie the last step issues. carry
+// cookies ride along on the final POST, as a browser that is already signed in
+// would send them.
+func completeLogin(t *testing.T, h http.Handler, host string, sender *stubSender, baseURL, address string, carry ...*http.Cookie) *http.Cookie {
 	t.Helper()
 
 	request(t, h, http.MethodPost, host, "/login",
@@ -119,7 +123,7 @@ func completeLogin(t *testing.T, h http.Handler, host string, sender *stubSender
 
 	form := url.Values{"nonce": {nonceCookie.Value}}
 	complete := request(t, h, http.MethodPost, host, "/login/"+token,
-		strings.NewReader(form.Encode()), nonceCookie)
+		strings.NewReader(form.Encode()), append([]*http.Cookie{nonceCookie}, carry...)...)
 	defer complete.Body.Close()
 
 	sessionCookie := findCookie(complete, web.SessionCookieName)
@@ -273,5 +277,87 @@ func TestLoginRequest_ByteIdenticalForKnownAndUnknownEmail(t *testing.T) {
 	}
 	if string(knownBody) != string(unknownBody) {
 		t.Fatalf("body differs:\nknown   = %q\nunknown = %q", knownBody, unknownBody)
+	}
+}
+
+// TestLoginRequest_OverBudgetIsByteIdenticalToSuccess: the fourth request for
+// an address sends nothing, yet must look exactly like the first, or the
+// budget becomes a way to learn who was asked about recently.
+func TestLoginRequest_OverBudgetIsByteIdenticalToSuccess(t *testing.T) {
+	srv, sender := newLoginServer(t)
+	h := srv.Handler()
+	const host = "retratar.com.ar"
+
+	post := func(i int) (status int, contentType string, body []byte) {
+		t.Helper()
+		// A distinct peer per request keeps the per-IP limiter out of the way.
+		remote := fmt.Sprintf("203.0.113.%d:5000", 100+i)
+		form := strings.NewReader(url.Values{"email": {"target@example.com"}}.Encode())
+		resp := requestFrom(t, h, remote, http.MethodPost, host, "/login", form)
+		defer resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
+		b, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		return resp.StatusCode, resp.Header.Get("Content-Type"), b
+	}
+
+	firstStatus, firstType, firstBody := post(0)
+
+	var thirdMail string
+	for i := 1; i < user.LoginBudget; i++ {
+		post(i)
+	}
+	sender.mu.Lock()
+	thirdMail = sender.body
+	sender.mu.Unlock()
+
+	status, contentType, body := post(user.LoginBudget)
+
+	if status != firstStatus {
+		t.Errorf("over-budget status = %d, want %d", status, firstStatus)
+	}
+	if contentType != firstType {
+		t.Errorf("over-budget Content-Type = %q, want %q", contentType, firstType)
+	}
+	if !bytes.Equal(body, firstBody) {
+		t.Errorf("over-budget body differs from the first response:\nfirst = %q\nover  = %q", firstBody, body)
+	}
+
+	sender.mu.Lock()
+	last := sender.body
+	sender.mu.Unlock()
+	if last != thirdMail {
+		t.Errorf("a mail was sent for the over-budget request:\nthird = %q\nlast  = %q", thirdMail, last)
+	}
+}
+
+// TestLoginComplete_RevokesIncomingSession: signing in must not leave the
+// session the browser arrived with alive behind the new one.
+func TestLoginComplete_RevokesIncomingSession(t *testing.T) {
+	srv, sender := newLoginServer(t)
+	h := srv.Handler()
+	const host = "retratar.com.ar"
+	baseURL := srv.Config.BaseURL()
+
+	cookieA := completeLogin(t, h, host, sender, baseURL, "dana@example.com")
+	cookieB := completeLogin(t, h, host, sender, baseURL, "dana@example.com", cookieA)
+
+	if _, err := srv.Sessions.Lookup(t.Context(), cookieA.Value); !errors.Is(err, session.ErrInvalidSession) {
+		t.Fatalf("Sessions.Lookup() with the old cookie error = %v, want ErrInvalidSession", err)
+	}
+	home := request(t, h, http.MethodGet, host, "/", nil, cookieA)
+	home.Body.Close() //nolint:errcheck // httptest body close cannot fail
+	if home.StatusCode != http.StatusSeeOther {
+		t.Errorf("home status with the old cookie = %d, want 303 (redirect to /login)", home.StatusCode)
+	}
+
+	if _, err := srv.Sessions.Lookup(t.Context(), cookieB.Value); err != nil {
+		t.Fatalf("Sessions.Lookup() with the new cookie error = %v, want nil", err)
+	}
+	home = request(t, h, http.MethodGet, host, "/", nil, cookieB)
+	home.Body.Close() //nolint:errcheck // httptest body close cannot fail
+	if home.StatusCode != http.StatusOK {
+		t.Errorf("home status with the new cookie = %d, want 200", home.StatusCode)
 	}
 }

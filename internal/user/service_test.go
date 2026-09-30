@@ -415,6 +415,131 @@ func TestGetByHandleRejectsUnknown(t *testing.T) {
 	}
 }
 
+func TestRequestLoginBudgetSuppressesFourthRequest(t *testing.T) {
+	t.Parallel()
+
+	pool := testdb.New(t)
+	svc := user.NewService(pool)
+
+	var third string
+	for i := range user.LoginBudget {
+		raw, err := svc.RequestLogin(t.Context(), "ana@example.com")
+		if err != nil {
+			t.Fatalf("RequestLogin() #%d error = %v, want nil", i+1, err)
+		}
+		third = raw
+	}
+
+	if _, err := svc.RequestLogin(t.Context(), "ana@example.com"); !errors.Is(err, user.ErrLoginBudgetExceeded) {
+		t.Fatalf("RequestLogin() over budget error = %v, want ErrLoginBudgetExceeded", err)
+	}
+	if got := countLoginTokens(t, pool); got != user.LoginBudget {
+		t.Errorf("login tokens = %d, want %d: the suppressed request must not mint", got, user.LoginBudget)
+	}
+
+	// The suppressed request must not have retired the live link, or an
+	// attacker could kill a victim's link just by asking.
+	if _, err := svc.CompleteLogin(t.Context(), third); err != nil {
+		t.Fatalf("CompleteLogin() with the last link error = %v, want nil", err)
+	}
+}
+
+func TestRequestLoginBudgetResetsAfterWindow(t *testing.T) {
+	t.Parallel()
+
+	pool := testdb.New(t)
+	svc := user.NewService(pool)
+
+	for range user.LoginBudget {
+		if _, err := svc.RequestLogin(t.Context(), "ana@example.com"); err != nil {
+			t.Fatalf("RequestLogin() error = %v, want nil", err)
+		}
+	}
+
+	// Past the window by a margin, computed so the test follows the constant.
+	if _, err := pool.Exec(t.Context(),
+		"UPDATE login_tokens SET created_at = now() - make_interval(secs => $2::double precision) WHERE email = $1",
+		"ana@example.com", user.LoginBudgetWindow.Seconds()+60); err != nil {
+		t.Fatalf("age tokens: %v", err)
+	}
+
+	if _, err := svc.RequestLogin(t.Context(), "ana@example.com"); err != nil {
+		t.Fatalf("RequestLogin() after the window error = %v, want nil", err)
+	}
+}
+
+// TestLoginBudgetWindowDoesNotOutlastToken guards the invariant that keeps the
+// budget from locking someone out.
+func TestLoginBudgetWindowDoesNotOutlastToken(t *testing.T) {
+	t.Parallel()
+
+	if user.LoginBudgetWindow > user.TokenTTL {
+		t.Fatalf("LoginBudgetWindow = %v > TokenTTL = %v: three requests would leave an address with an expired last link and a spent budget until the window ends, with no way to request another",
+			user.LoginBudgetWindow, user.TokenTTL)
+	}
+}
+
+func TestRequestLoginBudgetIsPerAddress(t *testing.T) {
+	t.Parallel()
+
+	pool := testdb.New(t)
+	svc := user.NewService(pool)
+
+	for range user.LoginBudget {
+		if _, err := svc.RequestLogin(t.Context(), "a@example.com"); err != nil {
+			t.Fatalf("RequestLogin(a) error = %v, want nil", err)
+		}
+	}
+
+	if _, err := svc.RequestLogin(t.Context(), "b@example.com"); err != nil {
+		t.Fatalf("RequestLogin(b) error = %v, want nil: a's budget must not spill over", err)
+	}
+}
+
+// TestConcurrentRequestLoginRespectsBudget fails without the advisory lock:
+// every goroutine would read a count under the budget before any of them
+// inserted, and all of them would mint.
+func TestConcurrentRequestLoginRespectsBudget(t *testing.T) {
+	t.Parallel()
+
+	pool := testdb.New(t)
+	svc := user.NewService(pool)
+
+	const attempts = 10
+	errs := make([]error, attempts)
+
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for i := range attempts {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start // Release them together, so they contend for the address.
+			_, errs[i] = svc.RequestLogin(t.Context(), "ana@example.com")
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	var succeeded int
+	for _, err := range errs {
+		switch {
+		case err == nil:
+			succeeded++
+		case errors.Is(err, user.ErrLoginBudgetExceeded):
+		default:
+			t.Errorf("RequestLogin() error = %v, want nil or ErrLoginBudgetExceeded", err)
+		}
+	}
+
+	if succeeded != user.LoginBudget {
+		t.Fatalf("%d of %d concurrent requests succeeded, want exactly %d", succeeded, attempts, user.LoginBudget)
+	}
+	if got := countLoginTokens(t, pool); got != user.LoginBudget {
+		t.Errorf("login tokens = %d, want %d", got, user.LoginBudget)
+	}
+}
+
 // login runs a whole magic link round trip and returns the account.
 func login(t *testing.T, svc *user.Service, address string) user.User {
 	t.Helper()
