@@ -122,19 +122,20 @@ func (s *Server) handleLoginComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Signing in replaces whatever session the browser carried; a failed revoke
-	// must not block the sign-in, so it is logged and skipped.
-	if old, cookieErr := r.Cookie(SessionCookieName); cookieErr == nil && old.Value != "" {
-		if revokeErr := s.Sessions.Revoke(r.Context(), old.Value); revokeErr != nil {
-			s.Logger.ErrorContext(r.Context(), "revoke session", slog.String("error", revokeErr.Error()))
-		}
-	}
-
 	sessionToken, err := s.Sessions.Issue(r.Context(), u.ID)
 	if err != nil {
 		s.Logger.ErrorContext(r.Context(), "issue session", slog.String("error", err.Error()))
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
+	}
+
+	// Issue first, revoke second: the magic link is already spent and cannot be
+	// retried, so a failed issue must leave the old session working. A failed
+	// revoke must not block the sign-in either, so it is logged and skipped.
+	if old, cookieErr := r.Cookie(SessionCookieName); cookieErr == nil && old.Value != "" {
+		if revokeErr := s.Sessions.Revoke(r.Context(), old.Value); revokeErr != nil {
+			s.Logger.ErrorContext(r.Context(), "revoke session", slog.String("error", revokeErr.Error()))
+		}
 	}
 
 	SetSessionCookie(w, sessionToken, session.TTL)
