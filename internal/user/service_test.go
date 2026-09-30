@@ -456,14 +456,26 @@ func TestRequestLoginBudgetResetsAfterWindow(t *testing.T) {
 		}
 	}
 
+	// Past the window by a margin, computed so the test follows the constant.
 	if _, err := pool.Exec(t.Context(),
-		"UPDATE login_tokens SET created_at = now() - interval '61 minutes' WHERE email = $1",
-		"ana@example.com"); err != nil {
+		"UPDATE login_tokens SET created_at = now() - make_interval(secs => $2::double precision) WHERE email = $1",
+		"ana@example.com", user.LoginBudgetWindow.Seconds()+60); err != nil {
 		t.Fatalf("age tokens: %v", err)
 	}
 
 	if _, err := svc.RequestLogin(t.Context(), "ana@example.com"); err != nil {
 		t.Fatalf("RequestLogin() after the window error = %v, want nil", err)
+	}
+}
+
+// TestLoginBudgetWindowDoesNotOutlastToken guards the invariant that keeps the
+// budget from locking someone out.
+func TestLoginBudgetWindowDoesNotOutlastToken(t *testing.T) {
+	t.Parallel()
+
+	if user.LoginBudgetWindow > user.TokenTTL {
+		t.Fatalf("LoginBudgetWindow = %v > TokenTTL = %v: three requests would leave an address with an expired last link and a spent budget until the window ends, with no way to request another",
+			user.LoginBudgetWindow, user.TokenTTL)
 	}
 }
 

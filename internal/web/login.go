@@ -51,7 +51,7 @@ func (s *Server) handleLoginRequest(w http.ResponseWriter, r *http.Request) {
 	if errors.Is(err, user.ErrLoginBudgetExceeded) {
 		// The response is identical to a successful one on purpose. The
 		// suppressed path is faster because it skips SMTP, which reveals only
-		// that this address had its budget of requests this hour — never
+		// that this address had its budget of requests in the current window — never
 		// whether an account exists. Closing that gap would need async mail,
 		// which is deliberately not done; see the decision log.
 		//

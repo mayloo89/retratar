@@ -42,13 +42,17 @@ const TokenTTL = 15 * time.Minute
 // Three covers the honest cases: the mail did not arrive, the person asked
 // again, and asked once more. Anything past that is a script or a mistake, and
 // the budget is what bounds the harm: whoever is aimed at an inbox gets at most
-// this many emails per window, however many IPs the requests come from.
+// this many emails per window (three per 15 minutes), however many IPs the
+// requests come from.
 const LoginBudget = 3
 
-// LoginBudgetWindow is the rolling period [LoginBudget] is counted over. An
-// hour is long enough that a flood stays small and short enough that someone
-// who burned their budget is not locked out for the rest of the day.
-const LoginBudgetWindow = time.Hour
+// LoginBudgetWindow is the rolling period [LoginBudget] is counted over. It is
+// tied to [TokenTTL] and must never outlast it. With a longer window, someone
+// could spend the budget — an attacker included — while the last link expired
+// unused, leaving the address with no working link and no way to request
+// another. Equal to the link lifetime, any link minted inside the window is
+// still valid or the window has room: one other request is always available.
+const LoginBudgetWindow = TokenTTL
 
 // maxEmailLength is the longest address SMTP is required to carry.
 const maxEmailLength = 254
