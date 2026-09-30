@@ -6,7 +6,7 @@
 </head>
 <body>
 <h1>Your page</h1>
-<p><a href="https://{{.Handle}}.retrat.ar">https://{{.Handle}}.retrat.ar</a></p>
+{{with .PageURL}}<p><a href="{{.}}">{{.}}</a></p>{{end}}
 
 <h2>Mood</h2>
 {{if .HasMood}}

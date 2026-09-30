@@ -18,6 +18,7 @@ type moodOption struct {
 // appHomeData is what app_home.html renders.
 type appHomeData struct {
 	Handle      string
+	PageURL     string
 	HasMood     bool
 	MoodLabel   string
 	MoodNote    string
@@ -49,6 +50,11 @@ func (s *Server) handleAppHome(w http.ResponseWriter, r *http.Request) {
 // submission, the same shape handleLoginRequest uses for login_form.html.
 func (s *Server) renderAppHome(w http.ResponseWriter, r *http.Request, status int, u user.User, errMsg string) {
 	data := appHomeData{Handle: u.Handle, Error: errMsg}
+	// An account without a handle has no page yet; POST /mood can still
+	// re-render this dashboard for one, so leave PageURL empty for it.
+	if u.Handle != "" {
+		data.PageURL = s.Config.PageBaseURL(u.Handle)
+	}
 
 	m, err := s.Moods.CurrentMood(r.Context(), u.ID)
 	switch {
