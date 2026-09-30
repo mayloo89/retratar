@@ -51,6 +51,17 @@ const (
 	// calls sweep the whole map over time without ever holding the lock for a
 	// full scan.
 	limiterReapSample = 8
+
+	// loginNetworkBurst is how many POST /login requests one IPv6 /48 (or one
+	// IPv4 address) may make back-to-back through the coarse limiter. It is
+	// deliberately generous: a /48 can be a whole office or campus behind a
+	// single allocation, and the per-IP limiter already handles individuals.
+	loginNetworkBurst = 20
+
+	// loginNetworkRefill is how long one token takes to return to the coarse
+	// limiter, i.e. its steady-state allowance of six requests a minute per
+	// network.
+	loginNetworkRefill = 10 * time.Second
 )
 
 // tokenBucket is one client's allowance. tokens is a float so that a partial
@@ -61,8 +72,10 @@ type tokenBucket struct {
 }
 
 // rateLimiter is a set of per-key token buckets guarded by one mutex. Keys are
-// client IPs; see [clientIP].
+// client IPs or networks, as chosen by key.
 type rateLimiter struct {
+	// key maps a request to the bucket it is charged to.
+	key          func(*http.Request) string
 	refillPerSec float64
 	burst        float64
 	idleTTL      time.Duration
@@ -77,6 +90,7 @@ type rateLimiter struct {
 // and then one more every refill interval.
 func newRateLimiter(burst float64, refill, idleTTL time.Duration) *rateLimiter {
 	return &rateLimiter{
+		key:          clientIP,
 		refillPerSec: 1 / refill.Seconds(),
 		burst:        burst,
 		idleTTL:      idleTTL,
@@ -140,12 +154,21 @@ func (l *rateLimiter) reap(now time.Time) {
 	}
 }
 
-// rateLimit rejects a request with 429 when its client IP is over budget. The
+// newNetworkLimiter builds the coarse limiter for POST /login: it keys on
+// [clientNetwork48], so one IPv6 allocation is one bucket however many /64s it
+// is split into.
+func newNetworkLimiter() *rateLimiter {
+	l := newRateLimiter(loginNetworkBurst, loginNetworkRefill, limiterIdleTTL)
+	l.key = clientNetwork48
+	return l
+}
+
+// rateLimit rejects a request with 429 when its client key is over budget. The
 // response body says nothing about the limit: its rate, burst and the caller's
 // remaining tokens all stay server-side.
 func (l *rateLimiter) rateLimit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !l.allow(clientIP(r)) {
+		if !l.allow(l.key(r)) {
 			http.Error(w, "rate limited", http.StatusTooManyRequests)
 			return
 		}
@@ -153,7 +176,8 @@ func (l *rateLimiter) rateLimit(next http.Handler) http.Handler {
 	})
 }
 
-// clientIP returns the address a request should be rate-limited by.
+// clientAddr resolves the address a request should be rate-limited by. ok is
+// false when the peer is not a parseable address; raw is then its text.
 //
 // In production the app listens on 127.0.0.1 only (ADDR in deploy/retratar.env)
 // and its one caller is the Pi's nginx, connecting over loopback. nginx accepts
@@ -168,11 +192,7 @@ func (l *rateLimiter) rateLimit(next http.Handler) http.Handler {
 // ignored and the peer address is the key. Trusting a forwarding header from an
 // untrusted peer would let anyone hand themselves a fresh bucket per request by
 // varying it — protection that only looks like protection.
-//
-// IPv6 keys are truncated to a /64, the smallest block routinely assigned to a
-// single subscriber, so an attacker holding a /64 (2^64 addresses) still maps
-// to one bucket rather than 2^64 of them.
-func clientIP(r *http.Request) string {
+func clientAddr(r *http.Request) (addr netip.Addr, raw string, ok bool) {
 	peer := r.RemoteAddr
 	if host, _, err := net.SplitHostPort(peer); err == nil {
 		peer = host
@@ -180,12 +200,13 @@ func clientIP(r *http.Request) string {
 
 	peerAddr, err := netip.ParseAddr(peer)
 	if err != nil {
-		// Not an address we can parse (a test harness value, say). Use it
-		// verbatim so it still partitions callers rather than merging them.
-		return peer
+		// Not an address we can parse (a test harness value, say). Callers use
+		// the raw text verbatim so it still partitions callers rather than
+		// merging them.
+		return netip.Addr{}, peer, false
 	}
 
-	addr := peerAddr
+	addr = peerAddr
 	if peerAddr.IsLoopback() {
 		if cf := strings.TrimSpace(r.Header.Get("CF-Connecting-IP")); cf != "" {
 			if forwarded, err := netip.ParseAddr(cf); err == nil {
@@ -193,7 +214,39 @@ func clientIP(r *http.Request) string {
 			}
 		}
 	}
+	return addr, peer, true
+}
+
+// clientIP returns the key a request is rate-limited by: [clientAddr]
+// collapsed by [rateLimitKey].
+//
+// IPv6 keys are truncated to a /64, the smallest block routinely assigned to a
+// single subscriber, so an attacker holding a /64 (2^64 addresses) still maps
+// to one bucket rather than 2^64 of them.
+func clientIP(r *http.Request) string {
+	addr, raw, ok := clientAddr(r)
+	if !ok {
+		return raw
+	}
 	return rateLimitKey(addr)
+}
+
+// clientNetwork48 is [clientIP] with IPv6 truncated to a /48 instead of a /64;
+// IPv4 stays the full address. A /48 is a common end-site allocation, and
+// holding one means 65,536 separate /64s: keyed by /64 alone, one allocation
+// would get 65,536 buckets. Keyed by /48 it gets one.
+func clientNetwork48(r *http.Request) string {
+	addr, raw, ok := clientAddr(r)
+	if !ok {
+		return raw
+	}
+	addr = addr.Unmap()
+	if addr.Is6() {
+		if prefix, err := addr.Prefix(48); err == nil {
+			return prefix.String()
+		}
+	}
+	return addr.String()
 }
 
 // rateLimitKey collapses an address to the block it shares a bucket with: the

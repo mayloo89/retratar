@@ -1,6 +1,7 @@
 package web_test
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -98,5 +99,56 @@ func TestLoginRateLimited_Returns429WithoutLimitDetail(t *testing.T) {
 	}
 	if got := resp.Header.Get("Retry-After"); got != "" {
 		t.Errorf("Retry-After = %q, want none: it would reveal the refill rate", got)
+	}
+}
+
+// TestLoginRateLimited_SlashFortyEightThrottlesManySlashSixtyFours: each /64 has
+// its own per-IP bucket, so only the /48 limiter can stop one allocation from
+// minting 65,536 of them.
+func TestLoginRateLimited_SlashFortyEightThrottlesManySlashSixtyFours(t *testing.T) {
+	srv, _ := newLoginServer(t)
+	h := srv.Handler()
+	const host = "retratar.com.ar"
+
+	// Mirrors loginNetworkBurst, which this external test package cannot see.
+	const networkBurst = 20
+	limited := false
+	for i := range 25 {
+		remote := fmt.Sprintf("[2001:db8:1:%x::1]:5000", i+1)
+		resp := requestFrom(t, h, remote, http.MethodPost, host, "/login", loginForm())
+		resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
+		if i < networkBurst && resp.StatusCode == http.StatusTooManyRequests {
+			t.Fatalf("request %d was limited inside the network burst", i+1)
+		}
+		if resp.StatusCode == http.StatusTooManyRequests {
+			limited = true
+		}
+	}
+	if !limited {
+		t.Fatal("25 requests from one /48 were never limited")
+	}
+
+	other := requestFrom(t, h, "[2001:db8:2:1::1]:5000", http.MethodPost, host, "/login", loginForm())
+	defer other.Body.Close() //nolint:errcheck // httptest body close cannot fail
+	if other.StatusCode == http.StatusTooManyRequests {
+		t.Fatal("a different /48 was limited; the limit is global, not per-network")
+	}
+}
+
+// TestHandleNotAffectedByNetworkLimiter: the /48 limiter guards POST /login
+// only. Many /64s in one /48 hitting POST /handle must not be throttled by it
+// (each /64 is unauthenticated here, so the answer is a redirect, never 429).
+func TestHandleNotAffectedByNetworkLimiter(t *testing.T) {
+	srv, _ := newLoginServer(t)
+	h := srv.Handler()
+	const host = "retratar.com.ar"
+
+	for i := range 25 {
+		remote := fmt.Sprintf("[2001:db8:1:%x::1]:5000", i+1)
+		resp := requestFrom(t, h, remote, http.MethodPost, host, "/handle", strings.NewReader("handle=x"))
+		resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
+		if resp.StatusCode == http.StatusTooManyRequests {
+			t.Fatalf("POST /handle request %d got 429; the network limiter must not cover it", i+1)
+		}
 	}
 }
