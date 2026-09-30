@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -65,10 +66,41 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 // Unwrap lets http.ResponseController reach the underlying writer.
 func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
 
+// redactedPath returns path with a login token replaced by a placeholder, so
+// that request and panic logs never carry the raw token: the token is a path
+// segment (GET/POST /login/{token}), not a query parameter. The route is
+// registered as exactly one segment, but a request for /login/<token>/ or
+// /login/<token>/anything still reaches this logger before it 404s, so the
+// token is redacted whenever it leads the remainder of the path, not only
+// when it is the whole remainder.
+//
+// It also strips CR and LF: r.URL.Path is already percent-decoded, so a
+// request for "/%0d%0afake: line" arrives with real newline bytes in the
+// path, which a log entry must not repeat verbatim (CWE-117 log forging).
+func redactedPath(path string) string {
+	path = strings.ReplaceAll(path, "\n", "")
+	path = strings.ReplaceAll(path, "\r", "")
+
+	const prefix = "/login/"
+	rest, ok := strings.CutPrefix(path, prefix)
+	if !ok || rest == "" {
+		return path
+	}
+	token, remainder, found := strings.Cut(rest, "/")
+	if token == "" {
+		return path
+	}
+	if found {
+		return prefix + "{token}/" + remainder
+	}
+	return prefix + "{token}"
+}
+
 // RequestLogger logs one line per request after it completes.
 //
-// The query string is never logged: magic-link tokens travel in it, and a log
-// file is a place tokens must not be.
+// The logged path is redacted by [redactedPath]: magic-link tokens travel in
+// the path, not the query string, and a log file is a place tokens must not
+// be.
 func RequestLogger(logger *slog.Logger) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -84,7 +116,7 @@ func RequestLogger(logger *slog.Logger) Middleware {
 				slog.String("request_id", RequestIDFrom(r.Context())),
 				slog.String("method", r.Method),
 				slog.String("host", r.Host),
-				slog.String("path", r.URL.Path),
+				slog.String("path", redactedPath(r.URL.Path)),
 				slog.Int("status", rec.status),
 				slog.Int64("bytes", rec.bytes),
 				slog.Duration("duration", time.Since(start)),
@@ -111,7 +143,7 @@ func Recover(logger *slog.Logger) Middleware {
 				logger.LogAttrs(r.Context(), slog.LevelError, "panic recovered",
 					slog.String("request_id", RequestIDFrom(r.Context())),
 					slog.Any("panic", v),
-					slog.String("path", r.URL.Path),
+					slog.String("path", redactedPath(r.URL.Path)),
 				)
 				http.Error(w, "internal server error", http.StatusInternalServerError)
 			}()

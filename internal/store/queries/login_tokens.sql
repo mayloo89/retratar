@@ -33,3 +33,20 @@ WHERE  token_hash = @token_hash
   AND  consumed_at IS NULL
   AND  expires_at > now()
 RETURNING email;
+
+-- name: CountRecentLoginTokens :one
+--
+-- Counts every link minted for the address inside the window, spent or not:
+-- the budget is on emails sent, not on links outstanding. Served by
+-- login_tokens_email_idx (email, created_at DESC). The window is measured on
+-- the database clock, like the expiry, so both come from one time source.
+SELECT count(*) FROM login_tokens
+WHERE  email = @email
+  AND  created_at > now() - make_interval(secs => @window_seconds::double precision);
+
+-- name: LockLoginAddress :exec
+--
+-- Transaction-scoped advisory lock on the address, taken before counting so two
+-- concurrent requests cannot both read count=2 and both mint. Released at
+-- commit or rollback; requests for other addresses do not contend.
+SELECT pg_advisory_xact_lock(hashtextextended(@email::text, 0));

@@ -45,7 +45,10 @@ func (s *Server) Handler() http.Handler {
 	writes := newRateLimiter(writeRateBurst, writeRateRefill, limiterIdleTTL)
 	reads := newRateLimiter(ogRateBurst, ogRateRefill, limiterIdleTTL)
 
-	app := Chain(s.appRoutes(writes), AppCSP, PrivateCache, CurrentUser(s.Sessions, s.Users))
+	// A coarser second limiter for POST /login only, keyed by IPv6 /48.
+	logins48 := newNetworkLimiter()
+
+	app := Chain(s.appRoutes(writes, logins48), AppCSP, PrivateCache, CurrentUser(s.Sessions, s.Users))
 	pages := Chain(s.pageRoutes(reads), PagesCSP)
 
 	root := s.hostSplit(app, pages)
@@ -97,12 +100,12 @@ func (s *Server) hostSplit(app, pages http.Handler) http.Handler {
 // logout is a nuisance rather than a cost. GET routes are read-only and the
 // login sub-steps (GET/POST /login/{token}) are already gated by the nonce
 // cookie and a single-use token.
-func (s *Server) appRoutes(writes *rateLimiter) http.Handler {
+func (s *Server) appRoutes(writes, logins48 *rateLimiter) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 	mux.HandleFunc("GET /{$}", s.handleAppHome)
 	mux.HandleFunc("GET /login", s.handleLoginForm)
-	mux.Handle("POST /login", writes.rateLimit(http.HandlerFunc(s.handleLoginRequest)))
+	mux.Handle("POST /login", writes.rateLimit(logins48.rateLimit(http.HandlerFunc(s.handleLoginRequest))))
 	mux.HandleFunc("GET /login/{token}", s.handleLoginConfirm)
 	mux.HandleFunc("POST /login/{token}", s.handleLoginComplete)
 	mux.HandleFunc("POST /logout", s.handleLogout)

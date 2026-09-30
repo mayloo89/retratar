@@ -3,9 +3,11 @@ package mail
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"net/smtp"
+	"net/textproto"
 	"strings"
 	"time"
 )
@@ -94,10 +96,18 @@ func sendMailWithDeadline(ctx context.Context, deadline time.Time, addr, host st
 	}
 	defer func() { _ = client.Close() }()
 
-	if ok, _ := client.Extension("STARTTLS"); ok {
+	switch ok, _ := client.Extension("STARTTLS"); {
+	case ok:
 		if err = client.StartTLS(&tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}); err != nil {
 			return fmt.Errorf("starttls: %w", err)
 		}
+	case !isLoopbackHost(host):
+		// smtp.PlainAuth already refuses to hand over credentials on a
+		// plaintext connection to a non-localhost server, so a downgrade here
+		// cannot leak the password — but it would otherwise fail silently as
+		// "mail not sent" with no indication why. A relay we send real mail
+		// through must offer STARTTLS; say so instead of guessing later.
+		return fmt.Errorf("relay at %s does not offer STARTTLS", host)
 	}
 
 	if err = client.Auth(auth); err != nil {
@@ -109,7 +119,7 @@ func sendMailWithDeadline(ctx context.Context, deadline time.Time, addr, host st
 	}
 	for _, rcpt := range to {
 		if err = client.Rcpt(rcpt); err != nil {
-			return fmt.Errorf("rcpt to %s: %w", rcpt, err)
+			return fmt.Errorf("rcpt to %s: %s", domainOf(rcpt), smtpStatus(err))
 		}
 	}
 
@@ -125,6 +135,41 @@ func sendMailWithDeadline(ctx context.Context, deadline time.Time, addr, host st
 	}
 
 	return client.Quit()
+}
+
+// isLoopbackHost reports whether host names the local machine, the one case
+// where an unencrypted SMTP conversation is acceptable (a relay running on
+// the same box, as in local development).
+func isLoopbackHost(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// domainOf returns the domain part of an email address, so an error that
+// wraps a recipient never carries the local part into logs.
+func domainOf(addr string) string {
+	_, domain, ok := strings.Cut(addr, "@")
+	if !ok {
+		return "unknown"
+	}
+	return domain
+}
+
+// smtpStatus reduces a RCPT failure to its numeric SMTP status, discarding
+// the relay's response text. A relay's rejection message is not ours to log
+// as-is: some relays echo the rejected address back into it (for example
+// "550 <ana@example.com>: recipient rejected"), which would put it in the
+// error even though [domainOf] already stripped it from the address we
+// interpolate ourselves.
+func smtpStatus(err error) string {
+	var proto *textproto.Error
+	if errors.As(err, &proto) {
+		return fmt.Sprintf("smtp status %d", proto.Code)
+	}
+	return "rejected"
 }
 
 // buildMessage assembles a minimal plain-text RFC 5322 message.

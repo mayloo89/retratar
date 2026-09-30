@@ -33,6 +33,28 @@ func (q *Queries) ConsumeLoginToken(ctx context.Context, tokenHash []byte) (stri
 	return email, err
 }
 
+const countRecentLoginTokens = `-- name: CountRecentLoginTokens :one
+SELECT count(*) FROM login_tokens
+WHERE  email = $1
+  AND  created_at > now() - make_interval(secs => $2::double precision)
+`
+
+type CountRecentLoginTokensParams struct {
+	Email         string
+	WindowSeconds float64
+}
+
+// Counts every link minted for the address inside the window, spent or not:
+// the budget is on emails sent, not on links outstanding. Served by
+// login_tokens_email_idx (email, created_at DESC). The window is measured on
+// the database clock, like the expiry, so both come from one time source.
+func (q *Queries) CountRecentLoginTokens(ctx context.Context, arg CountRecentLoginTokensParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countRecentLoginTokens, arg.Email, arg.WindowSeconds)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createLoginToken = `-- name: CreateLoginToken :exec
 INSERT INTO login_tokens (token_hash, email, expires_at)
 VALUES ($1, $2, now() + make_interval(secs => $3::double precision))
@@ -65,5 +87,17 @@ WHERE  email = $1
 // mailbox they can read but not control.
 func (q *Queries) InvalidateLoginTokensForEmail(ctx context.Context, email string) error {
 	_, err := q.db.Exec(ctx, invalidateLoginTokensForEmail, email)
+	return err
+}
+
+const lockLoginAddress = `-- name: LockLoginAddress :exec
+SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))
+`
+
+// Transaction-scoped advisory lock on the address, taken before counting so two
+// concurrent requests cannot both read count=2 and both mint. Released at
+// commit or rollback; requests for other addresses do not contend.
+func (q *Queries) LockLoginAddress(ctx context.Context, email string) error {
+	_, err := q.db.Exec(ctx, lockLoginAddress, email)
 	return err
 }

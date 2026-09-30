@@ -48,6 +48,18 @@ func (s *Server) handleLoginRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	raw, err := s.Users.RequestLogin(r.Context(), address)
+	if errors.Is(err, user.ErrLoginBudgetExceeded) {
+		// The response is identical to a successful one on purpose. The
+		// suppressed path is faster because it skips SMTP, which reveals only
+		// that this address had its budget of requests in the current window — never
+		// whether an account exists. Closing that gap would need async mail,
+		// which is deliberately not done; see the decision log.
+		//
+		// No address, and no domain, in the log line.
+		s.Logger.InfoContext(r.Context(), "login request suppressed: address over budget")
+		s.renderTemplate(w, http.StatusOK, "login_check_email.html", nil)
+		return
+	}
 	if err != nil {
 		s.Logger.ErrorContext(r.Context(), "request login", slog.String("error", err.Error()))
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -115,6 +127,15 @@ func (s *Server) handleLoginComplete(w http.ResponseWriter, r *http.Request) {
 		s.Logger.ErrorContext(r.Context(), "issue session", slog.String("error", err.Error()))
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
+	}
+
+	// Issue first, revoke second: the magic link is already spent and cannot be
+	// retried, so a failed issue must leave the old session working. A failed
+	// revoke must not block the sign-in either, so it is logged and skipped.
+	if old, cookieErr := r.Cookie(SessionCookieName); cookieErr == nil && old.Value != "" {
+		if revokeErr := s.Sessions.Revoke(r.Context(), old.Value); revokeErr != nil {
+			s.Logger.ErrorContext(r.Context(), "revoke session", slog.String("error", revokeErr.Error()))
+		}
 	}
 
 	SetSessionCookie(w, sessionToken, session.TTL)

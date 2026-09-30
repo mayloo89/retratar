@@ -36,6 +36,24 @@ const uniqueViolation = "23505"
 // and somebody switching to their laptop to open it.
 const TokenTTL = 15 * time.Minute
 
+// LoginBudget is how many sign-in links one address may be sent per
+// [LoginBudgetWindow].
+//
+// Three covers the honest cases: the mail did not arrive, the person asked
+// again, and asked once more. Anything past that is a script or a mistake, and
+// the budget is what bounds the harm: whoever is aimed at an inbox gets at most
+// this many emails per window (three per 15 minutes), however many IPs the
+// requests come from.
+const LoginBudget = 3
+
+// LoginBudgetWindow is the rolling period [LoginBudget] is counted over. It is
+// tied to [TokenTTL] and must never outlast it. With a longer window, someone
+// could spend the budget — an attacker included — while the last link expired
+// unused, leaving the address with no working link and no way to request
+// another. Equal to the link lifetime, any link minted inside the window is
+// still valid or the window has room: one other request is always available.
+const LoginBudgetWindow = TokenTTL
+
 // maxEmailLength is the longest address SMTP is required to carry.
 const maxEmailLength = 254
 
@@ -87,6 +105,12 @@ func NewService(pool *pgxpool.Pool) *Service {
 // It does not create an account and does not report whether one exists. A
 // caller that reveals the difference — a different response for a known
 // address, or a faster one — hands out a list of who has signed up.
+//
+// An address may be sent [LoginBudget] links per [LoginBudgetWindow]. Past
+// that the call returns [ErrLoginBudgetExceeded] and changes nothing: in
+// particular it leaves the outstanding links alive, so an attacker can exhaust
+// someone's budget but cannot use the endpoint to kill the link they already
+// hold.
 func (s *Service) RequestLogin(ctx context.Context, email string) (string, error) {
 	address, err := NormaliseEmail(email)
 	if err != nil {
@@ -104,6 +128,24 @@ func (s *Service) RequestLogin(ctx context.Context, email string) (string, error
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	q := s.queries.WithTx(tx)
+
+	// The budget check runs before anything is invalidated: an over-budget
+	// request must not retire the address's live link. The advisory lock
+	// serialises requests for one address, so two arriving together cannot both
+	// read a count under the budget and both mint.
+	if err = q.LockLoginAddress(ctx, address); err != nil {
+		return "", fmt.Errorf("lock login address: %w", err)
+	}
+	recent, err := q.CountRecentLoginTokens(ctx, store.CountRecentLoginTokensParams{
+		Email:         address,
+		WindowSeconds: LoginBudgetWindow.Seconds(),
+	})
+	if err != nil {
+		return "", fmt.Errorf("count recent login tokens: %w", err)
+	}
+	if recent >= LoginBudget {
+		return "", ErrLoginBudgetExceeded
+	}
 
 	// Retiring the outstanding tokens and issuing the new one share a
 	// transaction so that a failure cannot leave an address with no working
@@ -253,6 +295,14 @@ func NormaliseEmail(raw string) (string, error) {
 	// accounts, and would put attacker-chosen text into anything that echoes
 	// what was typed.
 	if parsed.Name != "" {
+		return "", ErrInvalidEmail
+	}
+
+	// ParseAddress unquotes the local part, so `"a b"@example.com` comes back
+	// without its quotes; only the trimmed input still shows them. Nobody
+	// legitimate needs a quoted local part, and they put unusual addresses in
+	// front of the mail relay.
+	if strings.Contains(trimmed, "\"") {
 		return "", ErrInvalidEmail
 	}
 
