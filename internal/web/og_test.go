@@ -154,10 +154,10 @@ func TestOGImageRateLimited_BlocksAfterBurstPerIP(t *testing.T) {
 	}
 }
 
-// TestHandleOGImage_AnyQueryStringIs404 checks that no query string reaches
-// the renderer, even for a handle that would otherwise render: a query would
+// TestHandleOGImage_QueryStringIs404 checks that no query string reaches the
+// renderer, even for a handle that would otherwise render: a query would
 // otherwise be a separate edge-cache key per value.
-func TestHandleOGImage_AnyQueryStringIs404(t *testing.T) {
+func TestHandleOGImage_QueryStringIs404(t *testing.T) {
 	srv, sender := newLoginServer(t)
 	h := srv.Handler()
 	appHost := "retratar.com.ar"
@@ -166,11 +166,20 @@ func TestHandleOGImage_AnyQueryStringIs404(t *testing.T) {
 	request(t, h, http.MethodPost, appHost, "/handle",
 		strings.NewReader(url.Values{"handle": {"ana"}}.Encode()), sessionCookie).Body.Close()
 
-	for _, path := range []string{"/og.png?v=1", "/og.png?", "/og.png?a=1&b=2"} {
+	for _, path := range []string{"/og.png?v=1", "/og.png?", "/og.png?x=%00"} {
 		resp := request(t, h, http.MethodGet, "ana.retrat.ar", path, nil)
 		resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
 		if resp.StatusCode != http.StatusNotFound {
 			t.Errorf("GET %s: status = %d, want 404", path, resp.StatusCode)
 		}
+		if got := resp.Header.Get("Content-Type"); got == "image/png" {
+			t.Errorf("GET %s: Content-Type = %q, want no image", path, got)
+		}
+	}
+
+	plain := request(t, h, http.MethodGet, "ana.retrat.ar", "/og.png", nil)
+	plain.Body.Close() //nolint:errcheck // httptest body close cannot fail
+	if plain.StatusCode != http.StatusOK {
+		t.Errorf("GET /og.png: status = %d, want 200", plain.StatusCode)
 	}
 }
