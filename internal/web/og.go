@@ -34,6 +34,14 @@ func mustParseOGPalette(css []byte) ogcard.Palette {
 // handlePage's lookup-and-404 shape exactly: a card for a page that would
 // 404 should also 404, not render an image for a handle nobody owns.
 func (s *Server) handleOGImage(w http.ResponseWriter, r *http.Request) {
+	// The page only ever emits /og.png with no query. A query string would
+	// create a separate edge-cache entry per value, letting a caller bypass
+	// the cache and force a render on every request.
+	if r.URL.RawQuery != "" || r.URL.ForceQuery {
+		http.NotFound(w, r)
+		return
+	}
+
 	handle, ok := HandleFrom(r.Context())
 	if !ok {
 		http.NotFound(w, r)
