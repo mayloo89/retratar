@@ -48,7 +48,17 @@ func (s *Server) Handler() http.Handler {
 	// A coarser second limiter for POST /login only, keyed by IPv6 /48.
 	logins48 := newNetworkLimiter()
 
-	app := Chain(s.appRoutes(writes, logins48), AppCSP, PrivateCache, CurrentUser(s.Sessions, s.Users))
+	// The app surface refuses cross-origin state-changing requests with the
+	// stdlib origin check rather than per-form CSRF tokens (ADR 0007). Unlike
+	// SameSite=Lax it is origin-strict, so a sibling subdomain is refused too.
+	// The login nonce in nonce.go stays as a separate defence for the
+	// link-confirmation step. The pages surface is GET-only and is not wrapped.
+	cop := http.NewCrossOriginProtection()
+	cop.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+	}))
+
+	app := Chain(s.appRoutes(writes, logins48), AppCSP, PrivateCache, cop.Handler, BodyLimit, CurrentUser(s.Sessions, s.Users))
 	pages := Chain(s.pageRoutes(reads), PagesCSP)
 
 	root := s.hostSplit(app, pages)

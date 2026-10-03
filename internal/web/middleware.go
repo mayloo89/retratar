@@ -167,6 +167,30 @@ func PrivateCache(next http.Handler) http.Handler {
 	})
 }
 
+// maxFormBody caps a request body on the app surface. Every app form is a
+// handful of short fields (an email, a handle, a mood key and a 60-character
+// note), so 4 KiB is generous and sits well below ParseForm's 10 MB default.
+const maxFormBody = 4 << 10
+
+// BodyLimit refuses request bodies larger than [maxFormBody].
+//
+// A declared Content-Length over the limit is answered with 413 at once. A
+// chunked or understated body has no usable length up front, so it is wrapped
+// in http.MaxBytesReader instead; the handler's ParseForm then fails into its
+// existing error path. It must run before any handler calls ParseForm.
+func BodyLimit(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Body != nil && r.Body != http.NoBody {
+			if r.ContentLength > maxFormBody {
+				http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+				return
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, maxFormBody)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // SecurityHeaders sets response headers that are identical on both surfaces.
 // The Content-Security-Policy differs per surface and is set by the surface's
 // own middleware; see [AppCSP] and [PagesCSP].
