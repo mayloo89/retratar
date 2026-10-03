@@ -173,7 +173,7 @@ func TestBodyLimit_RejectsOversizedPOST(t *testing.T) {
 	small := url.Values{"email": {"a@example.com"}, "pad": {strings.Repeat("x", 1<<10)}}.Encode()
 	resp = request(t, h, http.MethodPost, host, "/login", strings.NewReader(small))
 	resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
-	if resp.StatusCode == http.StatusRequestEntityTooLarge {
-		t.Errorf("1 KiB body status = %d, want it accepted", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("1 KiB body status = %d, want 200", resp.StatusCode)
 	}
 }
