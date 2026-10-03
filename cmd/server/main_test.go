@@ -83,7 +83,12 @@ func TestRunRejectsBadConfig(t *testing.T) {
 func TestRunRejectsDevelopmentWithoutMailSender(t *testing.T) {
 	t.Parallel()
 
-	err := run(t.Context(), nil, envFunc(nil), io.Discard)
+	// Bounded so a regressed check fails fast instead of serving until the
+	// suite timeout.
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	err := run(ctx, nil, envFunc(nil), io.Discard)
 	if !errors.Is(err, config.ErrInvalidConfig) {
 		t.Fatalf("run() error = %v, want ErrInvalidConfig", err)
 	}
