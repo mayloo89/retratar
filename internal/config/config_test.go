@@ -18,7 +18,7 @@ func env(pairs map[string]string) config.Getenv {
 func TestLoadDefaults(t *testing.T) {
 	t.Parallel()
 
-	cfg, err := config.Load(env(nil))
+	cfg, err := config.Load(env(map[string]string{"MAIL_SENDER": "log"}))
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -35,7 +35,7 @@ func TestLoadReadsEnvironment(t *testing.T) {
 
 	cfg, err := config.Load(env(map[string]string{
 		"ENV":              "production",
-		"ADDR":             ":9000",
+		"ADDR":             "127.0.0.1:9000",
 		"APP_HOST":         "retratar.com.ar",
 		"PAGES_HOST":       "retrat.ar",
 		"DATABASE_URL":     "postgres://u:p@db.internal:5432/retratar",
@@ -52,8 +52,8 @@ func TestLoadReadsEnvironment(t *testing.T) {
 	if !cfg.IsProduction() {
 		t.Error("IsProduction() = false, want true")
 	}
-	if cfg.Addr != ":9000" {
-		t.Errorf("Addr = %q, want %q", cfg.Addr, ":9000")
+	if cfg.Addr != "127.0.0.1:9000" {
+		t.Errorf("Addr = %q, want %q", cfg.Addr, "127.0.0.1:9000")
 	}
 	if cfg.ShutdownTimeout != 30*time.Second {
 		t.Errorf("ShutdownTimeout = %s, want 30s", cfg.ShutdownTimeout)
@@ -95,7 +95,7 @@ func TestValidateRejectsSharedRegistrableDomain(t *testing.T) {
 
 	base := config.Config{
 		Env:             config.EnvProduction,
-		Addr:            ":8080",
+		Addr:            "127.0.0.1:8080",
 		DatabaseURL:     "postgres://u:p@db.internal:5432/retratar",
 		SMTPHost:        "smtp.postmarkapp.com",
 		SMTPPort:        "587",
@@ -163,7 +163,7 @@ func TestValidateRejectsPublicAdminAddr(t *testing.T) {
 
 	base := config.Config{
 		Env:             config.EnvProduction,
-		Addr:            ":8080",
+		Addr:            "127.0.0.1:8080",
 		AppHost:         "retratar.com.ar",
 		PagesHost:       "retrat.ar",
 		DatabaseURL:     "postgres://u:p@db.internal:5432/retratar",
@@ -217,7 +217,7 @@ func TestValidateRequiresSMTPInProduction(t *testing.T) {
 
 	complete := config.Config{
 		Env:             config.EnvProduction,
-		Addr:            ":8080",
+		Addr:            "127.0.0.1:8080",
 		AppHost:         "retratar.com.ar",
 		PagesHost:       "retrat.ar",
 		DatabaseURL:     "postgres://u:p@db.internal:5432/retratar",
@@ -263,6 +263,7 @@ func TestValidateRequiresSMTPInProduction(t *testing.T) {
 	dev := complete
 	dev.Env = config.EnvDevelopment
 	dev.Addr = "127.0.0.1:8080"
+	dev.MailSender = "log"
 	dev.SMTPHost, dev.SMTPPort, dev.SMTPUsername, dev.SMTPPassword, dev.MailFrom = "", "", "", "", ""
 	if err := dev.Validate(); err != nil {
 		t.Fatalf("Validate() error = %v, want nil in development", err)
@@ -277,6 +278,7 @@ func TestValidateRejectsPublicAddrOutsideProduction(t *testing.T) {
 
 	base := config.Config{
 		Env:             config.EnvDevelopment,
+		MailSender:      "log",
 		AppHost:         "app.localhost:8080",
 		PagesHost:       "pages.localhost:8080",
 		DatabaseURL:     "postgres://u:p@127.0.0.1:5432/retratar?sslmode=disable",
@@ -313,11 +315,13 @@ func TestValidateRejectsPublicAddrOutsideProduction(t *testing.T) {
 		})
 	}
 
-	// The same public ADDR is fine in production: it is the SMTP relay path,
-	// not the log fallback, so this check does not apply.
+	// This check is development-only. Production has its own loopback rule,
+	// see TestValidateRequiresLoopbackAddrInProduction; a loopback ADDR with
+	// the SMTP relay and no MAIL_SENDER is the valid production shape.
 	prod := base
 	prod.Env = config.EnvProduction
-	prod.Addr = ":8080"
+	prod.MailSender = ""
+	prod.Addr = "127.0.0.1:8082"
 	prod.AppHost, prod.PagesHost = "retratar.com.ar", "retrat.ar"
 	prod.DatabaseURL = "postgres://u:p@db.internal:5432/retratar"
 	prod.SMTPHost, prod.SMTPPort, prod.SMTPUsername, prod.SMTPPassword, prod.MailFrom =
@@ -451,6 +455,9 @@ func TestValidateDatabaseURL(t *testing.T) {
 			cfg := base
 			cfg.Env = tt.env
 			cfg.DatabaseURL = tt.url
+			if tt.env == config.EnvDevelopment {
+				cfg.MailSender = "log"
+			}
 
 			err := cfg.Validate()
 			if tt.wantErr == nil {
@@ -469,11 +476,128 @@ func TestValidateDatabaseURL(t *testing.T) {
 func TestLoadDefaultsToTheComposeDatabase(t *testing.T) {
 	t.Parallel()
 
-	cfg, err := config.Load(env(nil))
+	cfg, err := config.Load(env(map[string]string{"MAIL_SENDER": "log"}))
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
 	if !strings.HasPrefix(cfg.DatabaseURL, "postgres://") {
 		t.Errorf("DatabaseURL = %q, want a postgres URL", cfg.DatabaseURL)
+	}
+}
+
+// TestValidateRequiresLoopbackAddrInProduction guards the nginx boundary:
+// clientIP trusts CF-Connecting-IP only from a loopback peer, so a public
+// bind would let clients skip nginx and spoof it.
+func TestValidateRequiresLoopbackAddrInProduction(t *testing.T) {
+	t.Parallel()
+
+	base := config.Config{
+		Env:             config.EnvProduction,
+		AppHost:         "retratar.com.ar",
+		PagesHost:       "retrat.ar",
+		DatabaseURL:     "postgres://u:p@db.internal:5432/retratar",
+		AdminAddr:       "127.0.0.1:8083",
+		SMTPHost:        "smtp.postmarkapp.com",
+		SMTPPort:        "587",
+		SMTPUsername:    "token",
+		SMTPPassword:    "token",
+		MailFrom:        "noreply@retratar.com.ar",
+		ShutdownTimeout: time.Second,
+	}
+
+	tests := []struct {
+		addr    string
+		wantErr error
+	}{
+		{"127.0.0.1:8082", nil},
+		{":8080", config.ErrInsecureHosts},
+		{"0.0.0.0:8082", config.ErrInsecureHosts},
+		{"10.0.0.5:8082", config.ErrInsecureHosts},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.addr, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := base
+			cfg.Addr = tt.addr
+			err := cfg.Validate()
+			if tt.wantErr == nil && err != nil {
+				t.Fatalf("Validate() error = %v, want nil", err)
+			}
+			if tt.wantErr != nil && !errors.Is(err, tt.wantErr) {
+				t.Fatalf("Validate() error = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestValidateMailSender guards the opt-in for logging magic links.
+func TestValidateMailSender(t *testing.T) {
+	t.Parallel()
+
+	base := config.Config{
+		Addr:            "127.0.0.1:8080",
+		AppHost:         "retratar.com.ar",
+		PagesHost:       "retrat.ar",
+		DatabaseURL:     "postgres://u:p@127.0.0.1:5432/retratar",
+		AdminAddr:       "127.0.0.1:8081",
+		SMTPHost:        "smtp.postmarkapp.com",
+		SMTPPort:        "587",
+		SMTPUsername:    "token",
+		SMTPPassword:    "token",
+		MailFrom:        "noreply@retratar.com.ar",
+		ShutdownTimeout: time.Second,
+	}
+
+	tests := []struct {
+		name    string
+		env     config.Environment
+		sender  string
+		wantErr error
+	}{
+		{"development without opt-in", config.EnvDevelopment, "", config.ErrInvalidConfig},
+		{"development with log", config.EnvDevelopment, "log", nil},
+		{"development with unknown value", config.EnvDevelopment, "smtp", config.ErrInvalidConfig},
+		{"production with log", config.EnvProduction, "log", config.ErrInsecureHosts},
+		{"production without it", config.EnvProduction, "", nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := base
+			cfg.Env = tt.env
+			cfg.MailSender = tt.sender
+			err := cfg.Validate()
+			if tt.wantErr == nil && err != nil {
+				t.Fatalf("Validate() error = %v, want nil", err)
+			}
+			if tt.wantErr != nil && !errors.Is(err, tt.wantErr) {
+				t.Fatalf("Validate() error = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestLoadRefusesServerThatLostEnv is the scenario MAIL_SENDER exists for: a
+// production box whose ENV was dropped has a loopback ADDR, so the ADDR check
+// cannot catch it. Without the opt-in it would log magic links.
+func TestLoadRefusesServerThatLostEnv(t *testing.T) {
+	t.Parallel()
+
+	_, err := config.Load(env(map[string]string{
+		"ADDR":          "127.0.0.1:8082",
+		"APP_HOST":      "retratar.com.ar",
+		"PAGES_HOST":    "retrat.ar",
+		"SMTP_HOST":     "smtp-relay.brevo.com",
+		"SMTP_PORT":     "587",
+		"SMTP_USERNAME": "user",
+		"SMTP_PASSWORD": "pass",
+		"MAIL_FROM":     "noreply@retratar.com.ar",
+	}))
+	if !errors.Is(err, config.ErrInvalidConfig) {
+		t.Fatalf("Load() error = %v, want ErrInvalidConfig", err)
 	}
 }

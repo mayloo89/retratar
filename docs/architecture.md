@@ -50,18 +50,11 @@ Three things keep it enforced:
 3. `TestPagesSurfaceNeverSetsCookies` asserts that no response from a page host
    carries `Set-Cookie`.
 
-`SameSite` is defence in depth here, not the defence. Real CSRF tokens are
-required on every state-changing request.
-
-That requirement is not yet met. `internal/web/nonce.go` binds the login
-confirmation page to the POST it sends, so `POST /login/{token}` is covered.
-The authenticated writes — `POST /mood`, `POST /handle`, `POST /logout` — carry
-no token and rest on `SameSite=Lax` alone. Lax does block a cross-site form
-POST, so this is not an open hole today; it is the single control this document
-says is load-bearing sitting on the mechanism the same paragraph says must not
-be load-bearing. Anything that weakens Lax — a same-site subdomain, a GET that
-mutates, a browser default change — turns it into one. Do not read the
-paragraph above as a description of what is built.
+`SameSite` is defence in depth here, not the defence. The app surface rejects
+cross-origin state-changing requests with `net/http.CrossOriginProtection`
+(ADR 0007), which is origin-strict: unlike `SameSite`, it also refuses a sibling
+subdomain. The login confirmation additionally carries a nonce bound to a
+`__Host-` cookie (`internal/web/nonce.go`).
 
 ## Why user pages have no JavaScript
 
