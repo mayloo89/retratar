@@ -42,6 +42,7 @@ func TestRunStartsAndShutsDown(t *testing.T) {
 		"ADMIN_ADDR":       "127.0.0.1:0",
 		"SHUTDOWN_TIMEOUT": "2s",
 		"DATABASE_URL":     url,
+		"MAIL_SENDER":      "log",
 	})
 
 	done := make(chan error, 1)
@@ -73,6 +74,18 @@ func TestRunRejectsBadConfig(t *testing.T) {
 	err := run(t.Context(), nil, getenv, io.Discard)
 	if !errors.Is(err, config.ErrInsecureHosts) {
 		t.Fatalf("run() error = %v, want ErrInsecureHosts", err)
+	}
+}
+
+// TestRunRejectsDevelopmentWithoutMailSender proves the opt-in for logging
+// magic links is wired into run(): a process with no ENV and no MAIL_SENDER,
+// the shape of a production box that lost its environment, must not start.
+func TestRunRejectsDevelopmentWithoutMailSender(t *testing.T) {
+	t.Parallel()
+
+	err := run(t.Context(), nil, envFunc(nil), io.Discard)
+	if !errors.Is(err, config.ErrInvalidConfig) {
+		t.Fatalf("run() error = %v, want ErrInvalidConfig", err)
 	}
 }
 

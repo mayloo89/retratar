@@ -63,6 +63,11 @@ type Config struct {
 	SMTPPassword string
 	MailFrom     string
 
+	// MailSender selects the log-based sender when set to "log". It is the
+	// explicit opt-in for writing magic links to the process log; see
+	// [Config.Validate].
+	MailSender string
+
 	ShutdownTimeout time.Duration
 }
 
@@ -106,6 +111,7 @@ func Load(getenv Getenv) (Config, error) {
 		SMTPUsername:    getenv("SMTP_USERNAME"),
 		SMTPPassword:    getenv("SMTP_PASSWORD"),
 		MailFrom:        getenv("MAIL_FROM"),
+		MailSender:      getenv("MAIL_SENDER"),
 		ShutdownTimeout: shutdown,
 	}
 
@@ -155,6 +161,16 @@ func (c Config) Validate() error {
 			ErrInsecureHosts, c.AdminAddr))
 	}
 
+	// Logging magic links is dangerous behaviour, so it needs an explicit
+	// opt-in: MAIL_SENDER=log. A server that loses ENV=production now refuses
+	// to start instead of quietly writing login tokens to the log.
+	switch c.MailSender {
+	case "", "log":
+	default:
+		errs = append(errs, fmt.Errorf("%w: MAIL_SENDER=%q, want \"log\" or empty",
+			ErrInvalidConfig, c.MailSender))
+	}
+
 	// Production has no log-based mail fallback: a magic link with nowhere to
 	// send it is a login nobody can complete. See cmd/server's newMailSender.
 	if c.IsProduction() {
@@ -169,16 +185,36 @@ func (c Config) Validate() error {
 				errs = append(errs, fmt.Errorf("%w: %s is required in production", ErrInvalidConfig, name))
 			}
 		}
-	} else if c.Addr != "" && !isLoopback(c.Addr) {
-		// Outside production, cmd/server's newMailSender falls back to
-		// mail.LogSender, which writes the full mail body — magic link
-		// included — to the process log. A publicly-bound ADDR paired with
-		// that fallback is the shape of a misconfigured production box (ENV
-		// dropped or never set), not a local dev box, so the combination is
-		// refused regardless of what ENV claims.
-		errs = append(errs, fmt.Errorf(
-			"%w: ADDR %q must be loopback outside production; the mail sender logs magic links",
-			ErrInsecureHosts, c.Addr))
+		if c.MailSender == "log" {
+			errs = append(errs, fmt.Errorf(
+				"%w: MAIL_SENDER=log is refused in production: production never logs mail",
+				ErrInsecureHosts))
+		}
+		// clientIP trusts CF-Connecting-IP only from a loopback peer, and a
+		// public bind would let clients skip nginx, its Cloudflare-only
+		// allow-list and limit_req.
+		if c.Addr != "" && !isLoopback(c.Addr) {
+			errs = append(errs, fmt.Errorf(
+				"%w: ADDR %q must bind to loopback in production; nginx is the only way in",
+				ErrInsecureHosts, c.Addr))
+		}
+	} else {
+		if c.MailSender == "" {
+			errs = append(errs, fmt.Errorf(
+				"%w: MAIL_SENDER=log is required outside production: magic links are written to the log, so logging mail must be asked for explicitly",
+				ErrInvalidConfig))
+		}
+		if c.Addr != "" && !isLoopback(c.Addr) {
+			// Outside production, newMailSender uses mail.LogSender, which
+			// writes the full mail body, magic link included, to the process
+			// log. A development-mode process bound publicly would expose
+			// that behaviour, so it is refused. This does not catch a
+			// production box that lost ENV: that box's ADDR is loopback too,
+			// and MAIL_SENDER is what stops it.
+			errs = append(errs, fmt.Errorf(
+				"%w: ADDR %q must be loopback outside production; the mail sender logs magic links",
+				ErrInsecureHosts, c.Addr))
+		}
 	}
 
 	// The session cookie is issued by AppHost. If PagesHost were AppHost or a
