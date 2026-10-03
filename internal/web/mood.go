@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/mayloo89/retratar/internal/mood"
+	"github.com/mayloo89/retratar/internal/user"
 )
 
 // handleMoodSubmit sets the signed-in account's current mood.
@@ -13,6 +14,13 @@ func (s *Server) handleMoodSubmit(w http.ResponseWriter, r *http.Request) {
 	u, ok := UserFrom(r.Context())
 	if !ok {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	// The dashboard and its mood form exist only after a handle is claimed
+	// (see handleAppHome). A mood without a page has nowhere to be shown.
+	if u.State != user.StateActive {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
 

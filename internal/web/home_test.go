@@ -1,6 +1,7 @@
 package web_test
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -8,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/mayloo89/retratar/internal/config"
+	"github.com/mayloo89/retratar/internal/mood"
 )
 
 func TestAppHome_LinksToPageBaseURL(t *testing.T) {
@@ -40,26 +42,29 @@ func TestAppHome_LinksToPageBaseURL(t *testing.T) {
 	}
 }
 
-// TestAppHome_NoHandleHasNoPageLink covers the one way the dashboard can
-// render for an account with no handle: POST /mood with an invalid mood
-// answers 422 by re-rendering it. There is no page to link to.
+// TestAppHome_NoHandleHasNoPageLink covers an account with no handle posting
+// a mood. The dashboard that once re-rendered for it is now unreachable:
+// POST /mood redirects to / and stores nothing. The {{with .PageURL}} guard in
+// the template stays regardless, so a future path to the dashboard without a
+// handle still cannot render an empty link.
 func TestAppHome_NoHandleHasNoPageLink(t *testing.T) {
 	srv, sender := newLoginServer(t)
 	h := srv.Handler()
 	host := "retratar.com.ar"
 
 	sessionCookie := completeLogin(t, h, host, sender, srv.Config.BaseURL(), "ana@example.com")
+	id, err := srv.Sessions.Lookup(t.Context(), sessionCookie.Value)
+	if err != nil {
+		t.Fatalf("Sessions.Lookup() error = %v", err)
+	}
 
 	resp := request(t, h, http.MethodPost, host, "/mood",
 		strings.NewReader(url.Values{"mood_key": {"euforico"}}.Encode()), sessionCookie)
 	defer resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
-	if resp.StatusCode != http.StatusUnprocessableEntity {
-		t.Fatalf("status = %d, want 422", resp.StatusCode)
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303", resp.StatusCode)
 	}
-	body, _ := io.ReadAll(resp.Body)
-	for _, bad := range []string{`href=""`, ".retrat.ar"} {
-		if strings.Contains(string(body), bad) {
-			t.Errorf("body contains %q, want no page link for an account without a handle\nbody = %s", bad, body)
-		}
+	if _, err := srv.Moods.CurrentMood(t.Context(), id); !errors.Is(err, mood.ErrNoMood) {
+		t.Errorf("CurrentMood() error = %v, want ErrNoMood", err)
 	}
 }
