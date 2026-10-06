@@ -92,11 +92,14 @@ func run(ctx context.Context, args []string, getenv config.Getenv, stdout io.Wri
 	}
 	defer pool.Close()
 
+	users := user.NewService(pool)
+	sessions := session.NewService(pool)
+
 	srv := &web.Server{
 		Config:   cfg,
 		Logger:   logger,
-		Users:    user.NewService(pool),
-		Sessions: session.NewService(pool),
+		Users:    users,
+		Sessions: sessions,
 		Moods:    mood.NewService(pool),
 		Mailer:   mailer,
 	}
@@ -109,6 +112,8 @@ func run(ctx context.Context, args []string, getenv config.Getenv, stdout io.Wri
 		// share a mux or a socket with the public surface.
 		servers = append(servers, newHTTPServer(cfg.AdminAddr, web.AdminHandler(), logger))
 	}
+
+	go purgeLoop(ctx, logger, purgeInterval, purgeRetention, users, sessions)
 
 	return serve(ctx, logger, cfg.ShutdownTimeout, servers...)
 }

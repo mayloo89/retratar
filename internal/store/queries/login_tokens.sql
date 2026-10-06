@@ -50,3 +50,12 @@ WHERE  email = @email
 -- concurrent requests cannot both read count=2 and both mint. Released at
 -- commit or rollback; requests for other addresses do not contend.
 SELECT pg_advisory_xact_lock(hashtextextended(@email::text, 0));
+
+-- name: PurgeLoginTokens :execrows
+--
+-- The cut-off is measured from expiry, not consumption, so a spent token is kept
+-- as long as an unspent one. The sign-in budget (CountRecentLoginTokens) counts
+-- spent rows too, so purging by consumed_at or created_at could delete rows the
+-- budget still needs.
+DELETE FROM login_tokens
+WHERE expires_at < now() - make_interval(secs => @older_than_seconds::double precision);

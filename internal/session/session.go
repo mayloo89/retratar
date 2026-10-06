@@ -102,3 +102,13 @@ func (s *Service) Revoke(ctx context.Context, raw string) error {
 
 	return nil
 }
+
+// PurgeExpired deletes sessions that expired or were revoked more than olderThan
+// ago and returns how many it removed. Live sessions are never touched.
+func (s *Service) PurgeExpired(ctx context.Context, olderThan time.Duration) (int64, error) {
+	n, err := s.queries.PurgeSessions(ctx, olderThan.Seconds())
+	if err != nil {
+		return 0, fmt.Errorf("purge sessions: %w", err)
+	}
+	return n, nil
+}
