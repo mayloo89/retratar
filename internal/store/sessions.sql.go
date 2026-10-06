@@ -47,6 +47,22 @@ func (q *Queries) LookupSession(ctx context.Context, sessionHash []byte) (uuid.U
 	return user_id, err
 }
 
+const purgeSessions = `-- name: PurgeSessions :execrows
+DELETE FROM sessions
+WHERE LEAST(expires_at, COALESCE(revoked_at, expires_at))
+      < now() - make_interval(secs => $1::double precision)
+`
+
+// A session is dead at whichever comes first, expiry or revocation, and the
+// retention clock starts there.
+func (q *Queries) PurgeSessions(ctx context.Context, olderThanSeconds float64) (int64, error) {
+	result, err := q.db.Exec(ctx, purgeSessions, olderThanSeconds)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const revokeSession = `-- name: RevokeSession :exec
 UPDATE sessions
 SET    revoked_at = now()

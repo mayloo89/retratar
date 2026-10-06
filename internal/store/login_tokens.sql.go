@@ -101,3 +101,20 @@ func (q *Queries) LockLoginAddress(ctx context.Context, email string) error {
 	_, err := q.db.Exec(ctx, lockLoginAddress, email)
 	return err
 }
+
+const purgeLoginTokens = `-- name: PurgeLoginTokens :execrows
+DELETE FROM login_tokens
+WHERE expires_at < now() - make_interval(secs => $1::double precision)
+`
+
+// The cut-off is measured from expiry, not consumption, so a spent token is kept
+// as long as an unspent one. The sign-in budget (CountRecentLoginTokens) counts
+// spent rows too, so purging by consumed_at or created_at could delete rows the
+// budget still needs.
+func (q *Queries) PurgeLoginTokens(ctx context.Context, olderThanSeconds float64) (int64, error) {
+	result, err := q.db.Exec(ctx, purgeLoginTokens, olderThanSeconds)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}

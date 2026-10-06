@@ -142,3 +142,34 @@ func TestConsumeLoginTokenLocksTheRow(t *testing.T) {
 		t.Fatalf("second ConsumeLoginToken() error = %v, want pgx.ErrNoRows", err)
 	}
 }
+
+// TestDeletingUserCascadesSessions: sessions.user_id cascades like moods does, so
+// deleting an account is not blocked by a login it once made.
+func TestDeletingUserCascadesSessions(t *testing.T) {
+	t.Parallel()
+
+	pool := testdb.New(t)
+
+	var userID string
+	if err := pool.QueryRow(t.Context(),
+		`INSERT INTO users (email) VALUES ('ana@example.com') RETURNING id`).Scan(&userID); err != nil {
+		t.Fatalf("insert user: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(),
+		`INSERT INTO sessions (session_hash, user_id, expires_at)
+		 VALUES ('\x01', $1, now() + interval '1 day')`, userID); err != nil {
+		t.Fatalf("insert session: %v", err)
+	}
+
+	if _, err := pool.Exec(t.Context(), `DELETE FROM users WHERE id = $1`, userID); err != nil {
+		t.Fatalf("delete user error = %v, want nil: the sessions FK must cascade", err)
+	}
+
+	var n int
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM sessions`).Scan(&n); err != nil {
+		t.Fatalf("count sessions: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("sessions after deleting the user = %d, want 0", n)
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -537,6 +538,82 @@ func TestConcurrentRequestLoginRespectsBudget(t *testing.T) {
 	}
 	if got := countLoginTokens(t, pool); got != user.LoginBudget {
 		t.Errorf("login tokens = %d, want %d", got, user.LoginBudget)
+	}
+}
+
+func TestPurgeExpiredLoginTokensKeepsRecentRows(t *testing.T) {
+	t.Parallel()
+
+	pool := testdb.New(t)
+	svc := user.NewService(pool)
+
+	for _, address := range []string{"old@example.com", "recent@example.com", "fresh@example.com"} {
+		if _, err := svc.RequestLogin(t.Context(), address); err != nil {
+			t.Fatalf("RequestLogin(%q) error = %v, want nil", address, err)
+		}
+	}
+	for address, ago := range map[string]string{"old@example.com": "8 days", "recent@example.com": "6 days"} {
+		if _, err := pool.Exec(t.Context(),
+			`UPDATE login_tokens SET expires_at = now() - $2::interval WHERE email = $1`, address, ago); err != nil {
+			t.Fatalf("age token for %s: %v", address, err)
+		}
+	}
+
+	got, err := svc.PurgeExpiredLoginTokens(t.Context(), 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("PurgeExpiredLoginTokens() error = %v, want nil", err)
+	}
+	if got != 1 {
+		t.Errorf("PurgeExpiredLoginTokens() = %d, want 1", got)
+	}
+	if n := count(t, pool, "SELECT count(*) FROM login_tokens WHERE email = 'old@example.com'"); n != 0 {
+		t.Errorf("8-day-old token rows = %d, want 0", n)
+	}
+	if n := countLoginTokens(t, pool); n != 2 {
+		t.Errorf("login tokens left = %d, want 2", n)
+	}
+}
+
+// TestPurgeDoesNotResetLoginBudget guards the reason the purge keys on expiry:
+// the budget counts spent and unspent rows alike, so a purge that reached rows
+// still inside the window would hand an exhausted address a fresh budget.
+func TestPurgeDoesNotResetLoginBudget(t *testing.T) {
+	t.Parallel()
+
+	pool := testdb.New(t)
+	svc := user.NewService(pool)
+
+	for i := range user.LoginBudget {
+		if _, err := svc.RequestLogin(t.Context(), "ana@example.com"); err != nil {
+			t.Fatalf("RequestLogin() #%d error = %v, want nil", i+1, err)
+		}
+	}
+
+	// Back-date the rows, and purge with a short retention. With fresh rows and
+	// the production retention nothing is old enough to delete under any key, so
+	// the test would pass even if the purge used created_at or consumed_at. Two
+	// minutes back keeps every row inside the budget window but well past a
+	// one-minute retention, so only a purge keyed on expires_at (still ~13
+	// minutes ahead) leaves them alone. Earlier requests retire the earlier
+	// links, so all but the last row have a consumed_at to move as well.
+	if _, err := pool.Exec(t.Context(),
+		`UPDATE login_tokens SET created_at = now() - interval '2 minutes' WHERE email = $1`,
+		"ana@example.com"); err != nil {
+		t.Fatalf("age created_at: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(),
+		`UPDATE login_tokens SET consumed_at = now() - interval '2 minutes'
+		 WHERE email = $1 AND consumed_at IS NOT NULL`,
+		"ana@example.com"); err != nil {
+		t.Fatalf("age consumed_at: %v", err)
+	}
+
+	if _, err := svc.PurgeExpiredLoginTokens(t.Context(), time.Minute); err != nil {
+		t.Fatalf("PurgeExpiredLoginTokens() error = %v, want nil", err)
+	}
+
+	if _, err := svc.RequestLogin(t.Context(), "ana@example.com"); !errors.Is(err, user.ErrLoginBudgetExceeded) {
+		t.Fatalf("RequestLogin() after purge error = %v, want ErrLoginBudgetExceeded", err)
 	}
 }
 

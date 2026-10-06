@@ -334,3 +334,17 @@ func fromRow(row store.User) User {
 	}
 	return u
 }
+
+// PurgeExpiredLoginTokens deletes login tokens that expired more than olderThan
+// ago and returns how many it removed.
+//
+// The cut-off is measured from expiry, spent or not, so it never deletes a row
+// the sign-in budget ([LoginBudgetWindow]) still counts as long as olderThan
+// is at least that window.
+func (s *Service) PurgeExpiredLoginTokens(ctx context.Context, olderThan time.Duration) (int64, error) {
+	n, err := s.queries.PurgeLoginTokens(ctx, olderThan.Seconds())
+	if err != nil {
+		return 0, fmt.Errorf("purge login tokens: %w", err)
+	}
+	return n, nil
+}
