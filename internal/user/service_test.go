@@ -589,7 +589,26 @@ func TestPurgeDoesNotResetLoginBudget(t *testing.T) {
 		}
 	}
 
-	if _, err := svc.PurgeExpiredLoginTokens(t.Context(), 7*24*time.Hour); err != nil {
+	// Back-date the rows, and purge with a short retention. With fresh rows and
+	// the production retention nothing is old enough to delete under any key, so
+	// the test would pass even if the purge used created_at or consumed_at. Two
+	// minutes back keeps every row inside the budget window but well past a
+	// one-minute retention, so only a purge keyed on expires_at (still ~13
+	// minutes ahead) leaves them alone. Earlier requests retire the earlier
+	// links, so all but the last row have a consumed_at to move as well.
+	if _, err := pool.Exec(t.Context(),
+		`UPDATE login_tokens SET created_at = now() - interval '2 minutes' WHERE email = $1`,
+		"ana@example.com"); err != nil {
+		t.Fatalf("age created_at: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(),
+		`UPDATE login_tokens SET consumed_at = now() - interval '2 minutes'
+		 WHERE email = $1 AND consumed_at IS NOT NULL`,
+		"ana@example.com"); err != nil {
+		t.Fatalf("age consumed_at: %v", err)
+	}
+
+	if _, err := svc.PurgeExpiredLoginTokens(t.Context(), time.Minute); err != nil {
 		t.Fatalf("PurgeExpiredLoginTokens() error = %v, want nil", err)
 	}
 
