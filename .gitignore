@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 /deploy/retratar.env
+/deploy/postgres-tls/
 *.pem
 *.key
 
