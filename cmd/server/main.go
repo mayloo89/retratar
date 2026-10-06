@@ -18,6 +18,7 @@ import (
 
 	"github.com/mayloo89/retratar/internal/buildinfo"
 	"github.com/mayloo89/retratar/internal/config"
+	"github.com/mayloo89/retratar/internal/guestbook"
 	"github.com/mayloo89/retratar/internal/mail"
 	"github.com/mayloo89/retratar/internal/mood"
 	"github.com/mayloo89/retratar/internal/session"
@@ -96,12 +97,13 @@ func run(ctx context.Context, args []string, getenv config.Getenv, stdout io.Wri
 	sessions := session.NewService(pool)
 
 	srv := &web.Server{
-		Config:   cfg,
-		Logger:   logger,
-		Users:    users,
-		Sessions: sessions,
-		Moods:    mood.NewService(pool),
-		Mailer:   mailer,
+		Config:    cfg,
+		Logger:    logger,
+		Users:     users,
+		Sessions:  sessions,
+		Moods:     mood.NewService(pool),
+		Guestbook: guestbook.NewService(pool),
+		Mailer:    mailer,
 	}
 
 	public := newHTTPServer(cfg.Addr, srv.Handler(), logger)

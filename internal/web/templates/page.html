@@ -21,5 +21,16 @@
 {{else}}
 <p class="blk-mood-empty">{{.OGDescription}}</p>
 {{end}}
+<section class="blk-guestbook">
+<h2>Libro de visitas</h2>
+{{if .Guestbook}}
+<ul>
+{{range .Guestbook}}<li><a href="{{.AuthorURL}}">{{.AuthorHandle}}</a> <time>{{.Date}}</time><p class="blk-guestbook-body">{{.Body}}</p></li>
+{{end}}</ul>
+{{else}}
+<p class="blk-guestbook-empty">Todavía nadie firmó.</p>
+{{end}}
+<a href="{{.SignURL}}">Firmá el libro de {{.Handle}}</a>
+</section>
 </body>
 </html>
