@@ -62,7 +62,7 @@ assuming:
 
     for i in $(seq 1 8); do
       curl -s -o /dev/null -w "%{http_code} " -H 'Host: retratar.com.ar' \
-        -X POST -d 'email=you+probe@example.com' http://127.0.0.1:8082/login
+        -X POST --data-urlencode 'email=you+probe@example.com' http://127.0.0.1:8082/login
     done; echo
 
 The app routes by `Host`, so a bare loopback request reaches neither surface
