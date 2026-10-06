@@ -2,13 +2,18 @@ package web_test
 
 import (
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/mayloo89/retratar/internal/config"
 	"github.com/mayloo89/retratar/internal/guestbook"
+	"github.com/mayloo89/retratar/internal/mood"
+	"github.com/mayloo89/retratar/internal/session"
+	"github.com/mayloo89/retratar/internal/testdb"
 	"github.com/mayloo89/retratar/internal/user"
 	"github.com/mayloo89/retratar/internal/web"
 )
@@ -103,6 +108,42 @@ func TestPage_GuestbookEscapesBody(t *testing.T) {
 	}
 	if !strings.Contains(body, "&lt;script&gt;alert(1)&lt;/script&gt;") {
 		t.Errorf("page body = %q, want the escaped script text", body)
+	}
+}
+
+// TestPage_GuestbookDateIsArgentine: 02:30 UTC on the 6th is still the 5th
+// in Buenos Aires.
+func TestPage_GuestbookDateIsArgentine(t *testing.T) {
+	// Built by hand rather than with newLoginServer, which does not expose
+	// its pool and the test needs SQL to backdate the entry.
+	pool := testdb.New(t)
+	srv := &web.Server{
+		Config: config.Config{
+			Env:       config.EnvProduction,
+			Addr:      ":8080",
+			AppHost:   "retratar.com.ar",
+			PagesHost: "retrat.ar",
+		},
+		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Users:     user.NewService(pool),
+		Sessions:  session.NewService(pool),
+		Moods:     mood.NewService(pool),
+		Guestbook: guestbook.NewService(pool),
+	}
+	h := srv.Handler()
+	_, a := guestbookAccount(t, srv, "a@example.com", "a")
+	_, b := guestbookAccount(t, srv, "b@example.com", "b")
+	if _, err := srv.Guestbook.Sign(t.Context(), a.ID, b.ID, "hola"); err != nil {
+		t.Fatalf("Sign() error = %v", err)
+	}
+	if _, err := pool.Exec(t.Context(),
+		`UPDATE guestbook_entries SET created_at = '2026-10-06 02:30:00+00'`); err != nil {
+		t.Fatalf("backdate entry: %v", err)
+	}
+
+	body := pageBody(t, h, "a.retrat.ar")
+	if !strings.Contains(body, "05/10/2026") {
+		t.Errorf("page body = %q, want the Argentine date 05/10/2026", body)
 	}
 }
 

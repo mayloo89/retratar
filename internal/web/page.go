@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/mayloo89/retratar/internal/guestbook"
 	"github.com/mayloo89/retratar/internal/mood"
@@ -56,6 +57,10 @@ type guestbookEntryView struct {
 // guestbookDateLayout is day/month/year, the order readers of the es-AR
 // pages expect.
 const guestbookDateLayout = "02/01/2006"
+
+// argentina is UTC-3 all year (no DST since 2009). A fixed zone avoids
+// depending on tzdata in the distroless image.
+var argentina = time.FixedZone("ART", -3*60*60)
 
 // handlePage renders the public page for the handle resolved from the
 // request's hostname; see [HandleFrom].
@@ -116,7 +121,7 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 		data.Guestbook = append(data.Guestbook, guestbookEntryView{
 			AuthorHandle: e.AuthorHandle,
 			AuthorURL:    s.Config.PageBaseURL(e.AuthorHandle) + "/",
-			Date:         e.CreatedAt.Format(guestbookDateLayout),
+			Date:         e.CreatedAt.In(argentina).Format(guestbookDateLayout),
 			Body:         e.Body,
 		})
 	}
