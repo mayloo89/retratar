@@ -27,6 +27,11 @@ const maxBodyRunes = 280
 // markup. Every other control character is rejected.
 func NormaliseBody(raw string) (string, error) {
 	body := strings.TrimSpace(strings.ReplaceAll(raw, "\r\n", "\n"))
+	// RuneCountInString counts each invalid byte as a rune, so invalid UTF-8
+	// would pass the length check and then fail the insert as a 500.
+	if !utf8.ValidString(body) {
+		return "", ErrInvalidBody
+	}
 	n := utf8.RuneCountInString(body)
 	if n == 0 || n > maxBodyRunes {
 		return "", ErrInvalidBody

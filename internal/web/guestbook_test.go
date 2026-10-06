@@ -189,15 +189,17 @@ func TestGuestbookSign_Rejects(t *testing.T) {
 		name     string
 		cookie   *http.Cookie
 		body     string
+		raw      string // a hand-built form body, for bytes url.Values would re-encode
 		status   int
 		location string
 		want     string
 	}{
-		{"empty body", bCookie, "", http.StatusUnprocessableEntity, "", "Escribí entre 1 y 280 caracteres."},
-		{"281 characters", bCookie, strings.Repeat("a", 281), http.StatusUnprocessableEntity, "", "Escribí entre 1 y 280 caracteres."},
-		{"own page", aCookie, "hola", http.StatusForbidden, "", "No podés firmar tu propio libro."},
-		{"not signed in", nil, "hola", http.StatusSeeOther, "/login", ""},
-		{"no handle", noHandle, "hola", http.StatusSeeOther, "/", ""},
+		{"empty body", bCookie, "", "", http.StatusUnprocessableEntity, "", "Escribí entre 1 y 280 caracteres."},
+		{"281 characters", bCookie, strings.Repeat("a", 281), "", http.StatusUnprocessableEntity, "", "Escribí entre 1 y 280 caracteres."},
+		{"invalid UTF-8", bCookie, "", "body=ok%FFok", http.StatusUnprocessableEntity, "", "Escribí entre 1 y 280 caracteres."},
+		{"own page", aCookie, "hola", "", http.StatusForbidden, "", "No podés firmar tu propio libro."},
+		{"not signed in", nil, "hola", "", http.StatusSeeOther, "/login", ""},
+		{"no handle", noHandle, "hola", "", http.StatusSeeOther, "/", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -205,7 +207,11 @@ func TestGuestbookSign_Rejects(t *testing.T) {
 			if tt.cookie != nil {
 				cookies = append(cookies, tt.cookie)
 			}
-			resp := request(t, h, http.MethodPost, guestbookAppHost, "/firmar/a", signForm(tt.body), cookies...)
+			form := signForm(tt.body)
+			if tt.raw != "" {
+				form = strings.NewReader(tt.raw)
+			}
+			resp := request(t, h, http.MethodPost, guestbookAppHost, "/firmar/a", form, cookies...)
 			if resp.StatusCode != tt.status {
 				t.Fatalf("status = %d, want %d", resp.StatusCode, tt.status)
 			}

@@ -24,6 +24,7 @@ func TestNormaliseBody(t *testing.T) {
 		{"whitespace only", " \n\t ", "", guestbook.ErrInvalidBody},
 		{"tab", "hola\tchau", "", guestbook.ErrInvalidBody},
 		{"NUL", "hola\x00chau", "", guestbook.ErrInvalidBody},
+		{"invalid UTF-8", "ok\xffok", "", guestbook.ErrInvalidBody},
 		{"lone carriage return", "hola\rchau", "", guestbook.ErrInvalidBody},
 		{"counts runes not bytes", strings.Repeat("ñ", 280), strings.Repeat("ñ", 280), nil},
 		{"281 multibyte runes", strings.Repeat("ñ", 281), "", guestbook.ErrInvalidBody},
