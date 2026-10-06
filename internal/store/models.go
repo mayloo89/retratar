@@ -9,6 +9,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type GuestbookEntry struct {
+	ID           uuid.UUID
+	PageUserID   uuid.UUID
+	AuthorUserID uuid.UUID
+	Body         string
+	State        string
+	CreatedAt    pgtype.Timestamptz
+}
+
 type LoginToken struct {
 	ID         uuid.UUID
 	TokenHash  []byte
