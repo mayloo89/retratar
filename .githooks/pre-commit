@@ -13,13 +13,15 @@ if [ -n "$unformatted" ]; then
 	exit 1
 fi
 
-# A real .env must never be committed, whatever .gitignore says.
-# .env.example is the documented template and is expected in the repository.
+# Host-local secrets must never be committed, whatever .gitignore says: a real
+# .env, deploy/retratar.env, and anything under deploy/postgres-tls/ (the
+# server certificate and key). The .env.example and deploy/retratar.env.example
+# templates are documented and are expected in the repository.
 secrets=$(git diff --cached --name-only \
-	| grep -E '(^|/)\.env($|\.)' \
+	| grep -E '(^|/)\.env($|\.)|(^|/)deploy/retratar\.env$|^deploy/postgres-tls/' \
 	| grep -vE '(^|/)\.env\.example$' || true)
 if [ -n "$secrets" ]; then
-	echo "refusing to commit environment files:"
+	echo "refusing to commit host-local secret files:"
 	echo "$secrets"
 	exit 1
 fi

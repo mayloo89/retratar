@@ -1,7 +1,7 @@
 BINARY  := bin/server
 GO      ?= go
 # Pinned so a new release cannot fail the build on an unrelated day.
-LINT_VERSION := v2.12.2
+LINT_VERSION := v2.13.2
 
 .DEFAULT_GOAL := help
 
