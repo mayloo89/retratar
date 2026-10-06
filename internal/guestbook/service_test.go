@@ -97,10 +97,10 @@ func TestVisibleExcludesHidden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Sign() error = %v, want nil", err)
 	}
-	if _, err := svc.Sign(t.Context(), page.ID, b.ID, "visible"); err != nil {
+	if _, err = svc.Sign(t.Context(), page.ID, b.ID, "visible"); err != nil {
 		t.Fatalf("Sign() error = %v, want nil", err)
 	}
-	if _, err := pool.Exec(t.Context(), `UPDATE guestbook_entries SET state = 'hidden' WHERE id = $1`, hidden.ID); err != nil {
+	if _, err = pool.Exec(t.Context(), `UPDATE guestbook_entries SET state = 'hidden' WHERE id = $1`, hidden.ID); err != nil {
 		t.Fatalf("hide entry: %v", err)
 	}
 

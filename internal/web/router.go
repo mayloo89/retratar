@@ -124,6 +124,8 @@ func (s *Server) appRoutes(writes, logins48 *rateLimiter) http.Handler {
 	mux.HandleFunc("GET /handle", s.handleClaimForm)
 	mux.Handle("POST /handle", writes.rateLimit(http.HandlerFunc(s.handleClaimSubmit)))
 	mux.Handle("POST /mood", writes.rateLimit(http.HandlerFunc(s.handleMoodSubmit)))
+	mux.HandleFunc("GET /firmar/{handle}", s.handleGuestbookForm)
+	mux.Handle("POST /firmar/{handle}", writes.rateLimit(http.HandlerFunc(s.handleGuestbookSign)))
 	return mux
 }
 
