@@ -47,24 +47,34 @@ Never `systemctl reload` without `nginx -t &&` in front of it.
 **2. App.**
 
     docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env \
+      build app
+    docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env \
       run --rm app -migrate
     docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env \
-      up -d --build app
+      up -d app
 
-`--build` matters — without it Compose reuses the old image and the deploy
-silently does nothing.
+Build first: `run` reuses whatever image already exists, so migrating before
+building applies the previous release's migrations and the new app then starts
+against an old schema.
 
 **3. Verify the rate limiter is actually live.** Check it rather than
 assuming:
 
     for i in $(seq 1 8); do
-      curl -s -o /dev/null -w "%{http_code} " \
-        -X POST -d 'email=rl-probe@example.com' http://127.0.0.1:8082/login
+      curl -s -o /dev/null -w "%{http_code} " -H 'Host: retratar.com.ar' \
+        -X POST -d 'email=you+probe@example.com' http://127.0.0.1:8082/login
     done; echo
 
+The app routes by `Host`, so a bare loopback request reaches neither surface
+(404); the header selects one. Substitute a real address of your own for
+`you+probe@example.com`: an `example.com` address bounces, and a plus-address
+is a separate address to the app, so the probe does not spend the sign-in
+budget of the account you use.
+
 Expect five `200` then `429` — the bucket is 5 burst, one token back every
-20s. All eight returning `200` means the container is still the old image; go
-back to step 2. Use a throwaway address: every non-429 sends a real email.
+20s. Only the first three requests send mail; the rest are absorbed by the
+per-address limit. All eight returning `200` means the container is still the
+old image; go back to step 2.
 
 This hits the app on loopback, so it tests the Go limiter only. The nginx
 `limit_req` layer is a separate check — make the same requests through the
