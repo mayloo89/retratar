@@ -1,9 +1,11 @@
 package web_test
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"slices"
 	"strings"
@@ -54,6 +56,24 @@ func readBody(t *testing.T, resp *http.Response) string {
 		t.Fatalf("read body: %v", err)
 	}
 	return string(b)
+}
+
+// requestFromWithCookies is requestFrom plus session cookies, for tests that
+// need both a distinct client address and a signed-in user.
+func requestFromWithCookies(t *testing.T, h http.Handler, remoteAddr, method, host, path string, body io.Reader, cookies ...*http.Cookie) *http.Response {
+	t.Helper()
+	req := httptest.NewRequest(method, path, body)
+	req.Host = host
+	req.RemoteAddr = remoteAddr
+	if body != nil {
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	}
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec.Result()
 }
 
 // pageBody fetches a public page and returns its body.
@@ -242,7 +262,7 @@ func TestGuestbookSign_Rejects(t *testing.T) {
 		{"not signed in", nil, "hola", "", http.StatusSeeOther, "/login", ""},
 		{"no handle", noHandle, "hola", "", http.StatusSeeOther, "/", ""},
 	}
-	for _, tt := range tests {
+	for i, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var cookies []*http.Cookie
 			if tt.cookie != nil {
@@ -252,7 +272,10 @@ func TestGuestbookSign_Rejects(t *testing.T) {
 			if tt.raw != "" {
 				form = strings.NewReader(tt.raw)
 			}
-			resp := request(t, h, http.MethodPost, guestbookAppHost, "/firmar/a", form, cookies...)
+			// Each case posts from its own address, so none depends on how
+			// much of the writes limiter's burst earlier cases spent.
+			addr := fmt.Sprintf("198.51.100.%d:5000", i+1)
+			resp := requestFromWithCookies(t, h, addr, http.MethodPost, guestbookAppHost, "/firmar/a", form, cookies...)
 			if resp.StatusCode != tt.status {
 				t.Fatalf("status = %d, want %d", resp.StatusCode, tt.status)
 			}
