@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -134,6 +135,66 @@ func TestSessionTokenIsStoredOnlyAsADigest(t *testing.T) {
 	want := sha256.Sum256([]byte(raw))
 	if !bytes.Equal(stored, want[:]) {
 		t.Errorf("session_hash is not SHA-256 of the token")
+	}
+}
+
+// TestPurgeExpiredSessions covers the three ways a session can be dead: expired,
+// revoked early with its expiry still ahead, and revoked recently. Only the
+// first two are past the retention window.
+func TestPurgeExpiredSessions(t *testing.T) {
+	t.Parallel()
+
+	pool := testdb.New(t)
+	u := newAccount(t, pool)
+	svc := session.NewService(pool)
+
+	var tokens [4]string
+	for i := range tokens {
+		raw, err := svc.Issue(t.Context(), u.ID)
+		if err != nil {
+			t.Fatalf("Issue() #%d error = %v, want nil", i, err)
+		}
+		tokens[i] = raw
+	}
+	live, expired, revokedOld, revokedRecent := tokens[0], tokens[1], tokens[2], tokens[3]
+
+	// created_at moves back in the same statement as revoked_at, or the
+	// sessions_revoked_after_created_at CHECK rejects the update.
+	age := func(raw, set string) {
+		t.Helper()
+		digest := sha256.Sum256([]byte(raw))
+		if _, err := pool.Exec(t.Context(),
+			`UPDATE sessions SET `+set+` WHERE session_hash = $1`, digest[:]); err != nil {
+			t.Fatalf("age session: %v", err)
+		}
+	}
+	age(expired, `created_at = now() - interval '40 days', expires_at = now() - interval '8 days'`)
+	age(revokedOld, `created_at = now() - interval '10 days', revoked_at = now() - interval '8 days'`)
+	age(revokedRecent, `created_at = now() - interval '3 days', revoked_at = now() - interval '1 day'`)
+
+	got, err := svc.PurgeExpired(t.Context(), 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("PurgeExpired() error = %v, want nil", err)
+	}
+	if got != 2 {
+		t.Errorf("PurgeExpired() = %d, want 2", got)
+	}
+
+	remaining := make(map[string]bool)
+	for name, raw := range map[string]string{"live": live, "expired": expired, "revokedOld": revokedOld, "revokedRecent": revokedRecent} {
+		digest := sha256.Sum256([]byte(raw))
+		var n int
+		if err := pool.QueryRow(t.Context(),
+			`SELECT count(*) FROM sessions WHERE session_hash = $1`, digest[:]).Scan(&n); err != nil {
+			t.Fatalf("count %s: %v", name, err)
+		}
+		remaining[name] = n == 1
+	}
+	want := map[string]bool{"live": true, "expired": false, "revokedOld": false, "revokedRecent": true}
+	for name, w := range want {
+		if remaining[name] != w {
+			t.Errorf("session %s present = %t, want %t", name, remaining[name], w)
+		}
 	}
 }
 

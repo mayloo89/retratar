@@ -25,3 +25,11 @@ UPDATE sessions
 SET    revoked_at = now()
 WHERE  session_hash = @session_hash
   AND  revoked_at IS NULL;
+
+-- name: PurgeSessions :execrows
+--
+-- A session is dead at whichever comes first, expiry or revocation, and the
+-- retention clock starts there.
+DELETE FROM sessions
+WHERE LEAST(expires_at, COALESCE(revoked_at, expires_at))
+      < now() - make_interval(secs => @older_than_seconds::double precision);
