@@ -225,14 +225,22 @@ func TestHideAndShow(t *testing.T) {
 	if err = svc.Hide(t.Context(), page.ID, e.ID); err != nil {
 		t.Fatalf("Hide() error = %v, want nil", err)
 	}
-	if got, _ := svc.Visible(t.Context(), page.ID, guestbook.PageLimit); len(got) != 0 {
+	got, err := svc.Visible(t.Context(), page.ID, guestbook.PageLimit)
+	if err != nil {
+		t.Fatalf("Visible() after Hide error = %v, want nil", err)
+	}
+	if len(got) != 0 {
 		t.Errorf("Visible() after Hide = %+v, want none", got)
 	}
 
 	if err = svc.Show(t.Context(), page.ID, e.ID); err != nil {
 		t.Fatalf("Show() error = %v, want nil", err)
 	}
-	if got, _ := svc.Visible(t.Context(), page.ID, guestbook.PageLimit); len(got) != 1 {
+	got, err = svc.Visible(t.Context(), page.ID, guestbook.PageLimit)
+	if err != nil {
+		t.Fatalf("Visible() after Show error = %v, want nil", err)
+	}
+	if len(got) != 1 {
 		t.Errorf("Visible() after Show = %+v, want the entry back", got)
 	}
 }
