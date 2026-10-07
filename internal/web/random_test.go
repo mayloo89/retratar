@@ -21,10 +21,10 @@ func claim(t *testing.T, srv *web.Server, sender *stubSender, address, handle st
 	return c
 }
 
-// randomLocation fetches /azar and returns the response status and Location.
+// randomLocation fetches /random and returns the response status and Location.
 func randomLocation(t *testing.T, h http.Handler, cookies ...*http.Cookie) (int, string) {
 	t.Helper()
-	resp := request(t, h, http.MethodGet, randomAppHost, "/azar", nil, cookies...)
+	resp := request(t, h, http.MethodGet, randomAppHost, "/random", nil, cookies...)
 	resp.Body.Close()
 	return resp.StatusCode, resp.Header.Get("Location")
 }
@@ -77,7 +77,7 @@ func TestRandom_NoEligiblePageRedirectsHome(t *testing.T) {
 
 func TestRandom_NotCached(t *testing.T) {
 	srv, _ := newLoginServer(t)
-	resp := request(t, srv.Handler(), http.MethodGet, randomAppHost, "/azar", nil)
+	resp := request(t, srv.Handler(), http.MethodGet, randomAppHost, "/random", nil)
 	resp.Body.Close()
 	if cc := resp.Header.Get("Cache-Control"); !strings.Contains(cc, "no-store") {
 		t.Fatalf("Cache-Control = %q, want no-store", cc)

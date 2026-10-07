@@ -44,7 +44,7 @@ type pageData struct {
 	Guestbook []guestbookEntryView
 	SignURL   string
 
-	// RandomURL points at /azar on the app surface.
+	// RandomURL points at /random on the app surface.
 	RandomURL string
 }
 
@@ -93,7 +93,7 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 		OGImageURL:    base + "/og.png",
 		OGDescription: ogcard.EmptyStateText,
 		SignURL:       s.Config.BaseURL() + "/firmar/" + u.Handle,
-		RandomURL:     s.Config.BaseURL() + "/azar",
+		RandomURL:     s.Config.BaseURL() + "/random",
 	}
 
 	m, err := s.Moods.CurrentMood(r.Context(), u.ID)

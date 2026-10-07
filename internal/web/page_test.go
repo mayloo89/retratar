@@ -145,7 +145,7 @@ func TestPage_LinksToRandom(t *testing.T) {
 	page := request(t, h, http.MethodGet, "ana.retrat.ar", "/", nil)
 	defer page.Body.Close() //nolint:errcheck // httptest body close cannot fail
 	body, _ := io.ReadAll(page.Body)
-	if !strings.Contains(string(body), `href="https://retratar.com.ar/azar"`) {
-		t.Errorf("page body = %q, want a link to https://retratar.com.ar/azar", body)
+	if !strings.Contains(string(body), `href="https://retratar.com.ar/random"`) {
+		t.Errorf("page body = %q, want a link to https://retratar.com.ar/random", body)
 	}
 }
