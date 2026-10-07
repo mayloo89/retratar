@@ -92,7 +92,7 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 		OGURL:         base + "/",
 		OGImageURL:    base + "/og.png",
 		OGDescription: ogcard.EmptyStateText,
-		SignURL:       s.Config.BaseURL() + "/firmar/" + u.Handle,
+		SignURL:       s.Config.BaseURL() + "/sign/" + u.Handle,
 		RandomURL:     s.Config.BaseURL() + "/random",
 	}
 

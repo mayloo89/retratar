@@ -98,13 +98,13 @@ func TestPage_ShowsGuestbookEntries(t *testing.T) {
 	guestbookAccount(t, srv, "a@example.com", "a")
 	bCookie, _ := guestbookAccount(t, srv, "b@example.com", "b")
 
-	request(t, h, http.MethodPost, guestbookAppHost, "/firmar/a", signForm("hola desde b"), bCookie).Body.Close()
+	request(t, h, http.MethodPost, guestbookAppHost, "/sign/a", signForm("hola desde b"), bCookie).Body.Close()
 
 	body := pageBody(t, h, "a.retrat.ar")
 	for _, want := range []string{
 		"hola desde b",
 		`<a href="https://b.retrat.ar/">b</a>`,
-		`href="https://retratar.com.ar/firmar/a"`,
+		`href="https://retratar.com.ar/sign/a"`,
 		"Firmá el libro de a",
 	} {
 		if !strings.Contains(body, want) {
@@ -192,12 +192,12 @@ func TestGuestbookForm_States(t *testing.T) {
 		status int
 		want   string
 	}{
-		{"not signed in", "/firmar/a", nil, http.StatusOK, "Ingresá para firmar el libro de a."},
-		{"no handle", "/firmar/a", noHandle, http.StatusOK, "Elegí tu nombre de usuario para firmar."},
-		{"own page", "/firmar/a", aCookie, http.StatusOK, "No podés firmar tu propio libro."},
-		{"valid signer", "/firmar/a", bCookie, http.StatusOK, `<textarea id="body" name="body" maxlength="280"`},
-		{"handle is case-insensitive", "/firmar/A", bCookie, http.StatusOK, `action="/firmar/a"`},
-		{"unknown handle", "/firmar/nadie", bCookie, http.StatusNotFound, ""},
+		{"not signed in", "/sign/a", nil, http.StatusOK, "Ingresá para firmar el libro de a."},
+		{"no handle", "/sign/a", noHandle, http.StatusOK, "Elegí tu nombre de usuario para firmar."},
+		{"own page", "/sign/a", aCookie, http.StatusOK, "No podés firmar tu propio libro."},
+		{"valid signer", "/sign/a", bCookie, http.StatusOK, `<textarea id="body" name="body" maxlength="280"`},
+		{"handle is case-insensitive", "/sign/A", bCookie, http.StatusOK, `action="/sign/a"`},
+		{"unknown handle", "/sign/nadie", bCookie, http.StatusNotFound, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -222,7 +222,7 @@ func TestGuestbookSign_RedirectsToPage(t *testing.T) {
 	_, a := guestbookAccount(t, srv, "a@example.com", "a")
 	bCookie, _ := guestbookAccount(t, srv, "b@example.com", "b")
 
-	resp := request(t, h, http.MethodPost, guestbookAppHost, "/firmar/a", signForm("  hola  "), bCookie)
+	resp := request(t, h, http.MethodPost, guestbookAppHost, "/sign/a", signForm("  hola  "), bCookie)
 	resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
 	if resp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("status = %d, want 303", resp.StatusCode)
@@ -275,7 +275,7 @@ func TestGuestbookSign_Rejects(t *testing.T) {
 			// Each case posts from its own address, so none depends on how
 			// much of the writes limiter's burst earlier cases spent.
 			addr := fmt.Sprintf("198.51.100.%d:5000", i+1)
-			resp := requestFromWithCookies(t, h, addr, http.MethodPost, guestbookAppHost, "/firmar/a", form, cookies...)
+			resp := requestFromWithCookies(t, h, addr, http.MethodPost, guestbookAppHost, "/sign/a", form, cookies...)
 			if resp.StatusCode != tt.status {
 				t.Fatalf("status = %d, want %d", resp.StatusCode, tt.status)
 			}
@@ -303,7 +303,7 @@ func TestGuestbookSign_InvalidBodyKeepsText(t *testing.T) {
 	bCookie, _ := guestbookAccount(t, srv, "b@example.com", "b")
 
 	text := strings.Repeat("ñ", 281)
-	resp := request(t, h, http.MethodPost, guestbookAppHost, "/firmar/a", signForm(text), bCookie)
+	resp := request(t, h, http.MethodPost, guestbookAppHost, "/sign/a", signForm(text), bCookie)
 	defer resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
 	body := readBody(t, resp)
 	if !strings.Contains(body, text) {
@@ -318,7 +318,7 @@ func TestGuestbookSign_CrossOriginRefused(t *testing.T) {
 	bCookie, _ := guestbookAccount(t, srv, "b@example.com", "b")
 
 	resp := requestWithBodyHeaders(t, h, map[string]string{"Sec-Fetch-Site": "cross-site"},
-		http.MethodPost, guestbookAppHost, "/firmar/a", signForm("hola"), bCookie)
+		http.MethodPost, guestbookAppHost, "/sign/a", signForm("hola"), bCookie)
 	resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403", resp.StatusCode)
@@ -342,7 +342,7 @@ func TestGuestbookSign_RateLimited(t *testing.T) {
 
 	statuses := make([]int, 12)
 	for i := range statuses {
-		resp := requestFrom(t, h, "203.0.113.10:5000", http.MethodPost, guestbookAppHost, "/firmar/a", signForm("hola"))
+		resp := requestFrom(t, h, "203.0.113.10:5000", http.MethodPost, guestbookAppHost, "/sign/a", signForm("hola"))
 		statuses[i] = resp.StatusCode
 		resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
 	}
