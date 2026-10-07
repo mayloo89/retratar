@@ -43,6 +43,9 @@ type pageData struct {
 	// the page only links out and never carries a form.
 	Guestbook []guestbookEntryView
 	SignURL   string
+
+	// RandomURL points at /random on the app surface.
+	RandomURL string
 }
 
 // guestbookEntryView is one guestbook entry as page.html renders it. Body is
@@ -90,6 +93,7 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 		OGImageURL:    base + "/og.png",
 		OGDescription: ogcard.EmptyStateText,
 		SignURL:       s.Config.BaseURL() + "/firmar/" + u.Handle,
+		RandomURL:     s.Config.BaseURL() + "/random",
 	}
 
 	m, err := s.Moods.CurrentMood(r.Context(), u.ID)

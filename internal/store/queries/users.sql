@@ -29,3 +29,14 @@ RETURNING *;
 
 -- name: GetUserByHandle :one
 SELECT * FROM users WHERE lower(handle) = lower(@handle);
+
+-- name: RandomActiveHandle :one
+--
+-- One random claimed page, optionally skipping one account (the visitor's
+-- own). ORDER BY random() scans and sorts every active row on each call: fine
+-- at village scale. Once the table is large, switch to TABLESAMPLE or pick a
+-- random value over a dense id range instead.
+SELECT handle FROM users
+WHERE state = 'active' AND handle IS NOT NULL
+  AND (sqlc.narg(exclude_id)::uuid IS NULL OR id <> sqlc.narg(exclude_id)::uuid)
+ORDER BY random() LIMIT 1;

@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const claimHandle = `-- name: ClaimHandle :one
@@ -79,6 +80,24 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const randomActiveHandle = `-- name: RandomActiveHandle :one
+SELECT handle FROM users
+WHERE state = 'active' AND handle IS NOT NULL
+  AND ($1::uuid IS NULL OR id <> $1::uuid)
+ORDER BY random() LIMIT 1
+`
+
+// One random claimed page, optionally skipping one account (the visitor's
+// own). ORDER BY random() scans and sorts every active row on each call: fine
+// at village scale. Once the table is large, switch to TABLESAMPLE or pick a
+// random value over a dense id range instead.
+func (q *Queries) RandomActiveHandle(ctx context.Context, excludeID pgtype.UUID) (*string, error) {
+	row := q.db.QueryRow(ctx, randomActiveHandle, excludeID)
+	var handle *string
+	err := row.Scan(&handle)
+	return handle, err
 }
 
 const upsertUserByEmail = `-- name: UpsertUserByEmail :one

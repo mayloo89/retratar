@@ -136,3 +136,16 @@ func TestPage_EmitsAbsoluteOGTags(t *testing.T) {
 		t.Errorf("mood page missing %q\nbody = %s", want, body)
 	}
 }
+
+func TestPage_LinksToRandom(t *testing.T) {
+	srv, sender := newLoginServer(t)
+	h := srv.Handler()
+	claim(t, srv, sender, "ana@example.com", "ana")
+
+	page := request(t, h, http.MethodGet, "ana.retrat.ar", "/", nil)
+	defer page.Body.Close() //nolint:errcheck // httptest body close cannot fail
+	body, _ := io.ReadAll(page.Body)
+	if !strings.Contains(string(body), `href="https://retratar.com.ar/random"`) {
+		t.Errorf("page body = %q, want a link to https://retratar.com.ar/random", body)
+	}
+}
