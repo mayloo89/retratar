@@ -21,6 +21,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/mayloo89/retratar/internal/store"
@@ -235,6 +236,27 @@ func (s *Service) GetByHandle(ctx context.Context, handle string) (User, error) 
 		return User{}, fmt.Errorf("get user by handle: %w", err)
 	}
 	return fromRow(row), nil
+}
+
+// RandomHandle returns the handle of a random claimed page, skipping the
+// account exclude names when it is non-nil. With no eligible page it returns
+// [ErrUserNotFound].
+func (s *Service) RandomHandle(ctx context.Context, exclude *uuid.UUID) (string, error) {
+	var arg pgtype.UUID
+	if exclude != nil {
+		arg = pgtype.UUID{Bytes: *exclude, Valid: true}
+	}
+	handle, err := s.queries.RandomActiveHandle(ctx, arg)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", ErrUserNotFound
+		}
+		return "", fmt.Errorf("random active handle: %w", err)
+	}
+	if handle == nil {
+		return "", ErrUserNotFound
+	}
+	return *handle, nil
 }
 
 // ClaimHandle gives an account its handle, moving it from

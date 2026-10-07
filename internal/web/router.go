@@ -126,6 +126,8 @@ func (s *Server) appRoutes(writes, logins48 *rateLimiter) http.Handler {
 	mux.Handle("POST /mood", writes.rateLimit(http.HandlerFunc(s.handleMoodSubmit)))
 	mux.HandleFunc("GET /firmar/{handle}", s.handleGuestbookForm)
 	mux.Handle("POST /firmar/{handle}", writes.rateLimit(http.HandlerFunc(s.handleGuestbookSign)))
+	// GET /azar is not rate-limited: it is a cheap read and sends no mail.
+	mux.HandleFunc("GET /azar", s.handleRandom)
 	return mux
 }
 

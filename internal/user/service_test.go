@@ -651,3 +651,58 @@ func count(t *testing.T, pool *pgxpool.Pool, query string) int {
 	}
 	return n
 }
+
+func TestRandomHandle(t *testing.T) {
+	t.Parallel()
+
+	pool := testdb.New(t)
+	svc := user.NewService(pool)
+
+	if _, err := svc.RandomHandle(t.Context(), nil); !errors.Is(err, user.ErrUserNotFound) {
+		t.Fatalf("RandomHandle() on empty table error = %v, want ErrUserNotFound", err)
+	}
+
+	a := login(t, svc, "a@example.com")
+	b := login(t, svc, "b@example.com")
+	login(t, svc, "c@example.com") // never claims a handle
+	if _, err := svc.ClaimHandle(t.Context(), a.ID, "aaa"); err != nil {
+		t.Fatalf("ClaimHandle(a) error = %v", err)
+	}
+	if _, err := svc.ClaimHandle(t.Context(), b.ID, "bbb"); err != nil {
+		t.Fatalf("ClaimHandle(b) error = %v", err)
+	}
+
+	seen := map[string]bool{}
+	for range 30 {
+		h, err := svc.RandomHandle(t.Context(), nil)
+		if err != nil {
+			t.Fatalf("RandomHandle(nil) error = %v, want nil", err)
+		}
+		seen[h] = true
+	}
+	for h := range seen {
+		if h != "aaa" && h != "bbb" {
+			t.Errorf("RandomHandle(nil) returned %q, want aaa or bbb", h)
+		}
+	}
+
+	for range 20 {
+		h, err := svc.RandomHandle(t.Context(), &a.ID)
+		if err != nil {
+			t.Fatalf("RandomHandle(exclude a) error = %v, want nil", err)
+		}
+		if h != "bbb" {
+			t.Fatalf("RandomHandle(exclude a) = %q, want bbb", h)
+		}
+	}
+
+	// Excluding the only other claimed account leaves nothing.
+	only := user.NewService(testdb.New(t))
+	solo := login(t, only, "solo@example.com")
+	if _, err := only.ClaimHandle(t.Context(), solo.ID, "solo"); err != nil {
+		t.Fatalf("ClaimHandle(solo) error = %v", err)
+	}
+	if _, err := only.RandomHandle(t.Context(), &solo.ID); !errors.Is(err, user.ErrUserNotFound) {
+		t.Fatalf("RandomHandle(exclude only user) error = %v, want ErrUserNotFound", err)
+	}
+}
