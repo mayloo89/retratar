@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Libro de {{.Handle}}</title>
+</head>
+<body>
+<h1>Libro de {{.Handle}}</h1>
+{{if .CanSign}}
+<form method="post" action="/firmar/{{.Handle}}">
+<label for="body">Tu mensaje</label>
+<textarea id="body" name="body" maxlength="280" rows="5" required>{{.Body}}</textarea>
+<button type="submit">Firmar</button>
+</form>
+{{with .Error}}<p role="alert">{{.}}</p>{{end}}
+<p><a href="{{.PageURL}}">Volver a la página de {{.Handle}}</a></p>
+{{else}}
+<p>{{.Message}}</p>
+<p><a href="{{.MessageURL}}">{{.MessageLink}}</a></p>
+{{end}}
+</body>
+</html>

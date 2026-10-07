@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/mayloo89/retratar/internal/config"
+	"github.com/mayloo89/retratar/internal/guestbook"
 	"github.com/mayloo89/retratar/internal/mood"
 	"github.com/mayloo89/retratar/internal/session"
 	"github.com/mayloo89/retratar/internal/testdb"
@@ -67,11 +68,12 @@ func newLoginServer(t *testing.T) (*web.Server, *stubSender) {
 			AppHost:   "retratar.com.ar",
 			PagesHost: "retrat.ar",
 		},
-		Logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Users:    user.NewService(pool),
-		Sessions: session.NewService(pool),
-		Moods:    mood.NewService(pool),
-		Mailer:   sender,
+		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Users:     user.NewService(pool),
+		Sessions:  session.NewService(pool),
+		Moods:     mood.NewService(pool),
+		Guestbook: guestbook.NewService(pool),
+		Mailer:    sender,
 	}, sender
 }
 

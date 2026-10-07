@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/mayloo89/retratar/internal/config"
+	"github.com/mayloo89/retratar/internal/guestbook"
 	"github.com/mayloo89/retratar/internal/mail"
 	"github.com/mayloo89/retratar/internal/mood"
 	"github.com/mayloo89/retratar/internal/session"
@@ -29,10 +30,11 @@ type Server struct {
 	Config config.Config
 	Logger *slog.Logger
 
-	Users    *user.Service
-	Sessions *session.Service
-	Moods    *mood.Service
-	Mailer   mail.Sender
+	Users     *user.Service
+	Sessions  *session.Service
+	Moods     *mood.Service
+	Guestbook *guestbook.Service
+	Mailer    mail.Sender
 }
 
 // Handler builds the root handler: shared middleware, then a split by hostname
@@ -122,6 +124,8 @@ func (s *Server) appRoutes(writes, logins48 *rateLimiter) http.Handler {
 	mux.HandleFunc("GET /handle", s.handleClaimForm)
 	mux.Handle("POST /handle", writes.rateLimit(http.HandlerFunc(s.handleClaimSubmit)))
 	mux.Handle("POST /mood", writes.rateLimit(http.HandlerFunc(s.handleMoodSubmit)))
+	mux.HandleFunc("GET /firmar/{handle}", s.handleGuestbookForm)
+	mux.Handle("POST /firmar/{handle}", writes.rateLimit(http.HandlerFunc(s.handleGuestbookSign)))
 	return mux
 }
 

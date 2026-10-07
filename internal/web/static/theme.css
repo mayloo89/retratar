@@ -51,3 +51,29 @@ body {
 .mood-fiesta     { --mood-bg: #f2d0f2; --mood-fg: #4a1a4a; }
 .mood-perdido    { --mood-bg: #d6d6d6; --mood-fg: #2b2b2b; }
 .mood-none       { --mood-bg: #f4f4f4; --mood-fg: #222; }
+
+.blk-guestbook {
+	margin-top: 2rem;
+}
+
+.blk-guestbook ul {
+	margin: 0 0 1rem;
+	padding: 0;
+	list-style: none;
+}
+
+.blk-guestbook li {
+	margin-bottom: 1rem;
+}
+
+/* Entry bodies are plain text; pre-line shows their line breaks without any
+ * markup in the page. */
+.blk-guestbook-body {
+	margin: 0.25rem 0 0;
+	white-space: pre-line;
+}
+
+.blk-guestbook-empty {
+	opacity: 0.6;
+	font-style: italic;
+}
