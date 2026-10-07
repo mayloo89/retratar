@@ -9,4 +9,8 @@ var (
 
 	// ErrOwnPage means the author tried to sign their own guestbook.
 	ErrOwnPage = errors.New("cannot sign own guestbook")
+
+	// ErrEntryNotFound means no entry with that ID is on the page. An entry
+	// on someone else's page is reported the same way.
+	ErrEntryNotFound = errors.New("guestbook entry not found")
 )

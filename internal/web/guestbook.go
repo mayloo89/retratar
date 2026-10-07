@@ -1,9 +1,12 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
+
+	"github.com/google/uuid"
 
 	"github.com/mayloo89/retratar/internal/guestbook"
 	"github.com/mayloo89/retratar/internal/user"
@@ -123,4 +126,50 @@ func (s *Server) handleGuestbookSign(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, data.PageURL, http.StatusSeeOther)
+}
+
+// handleGuestbookHide takes one of the signed-in owner's entries off their
+// public page.
+func (s *Server) handleGuestbookHide(w http.ResponseWriter, r *http.Request) {
+	s.setGuestbookEntryHidden(w, r, s.Guestbook.Hide)
+}
+
+// handleGuestbookShow puts one of the signed-in owner's hidden entries back
+// on their public page.
+func (s *Server) handleGuestbookShow(w http.ResponseWriter, r *http.Request) {
+	s.setGuestbookEntryHidden(w, r, s.Guestbook.Show)
+}
+
+// setGuestbookEntryHidden is the shared shape of hide and show: the guards
+// POST /mood uses, then apply on the entry named by {id}. An entry that is
+// not on the owner's page is a 404 whoever it belongs to, so the response
+// never confirms that an ID exists.
+func (s *Server) setGuestbookEntryHidden(w http.ResponseWriter, r *http.Request, apply func(ctx context.Context, pageUserID, entryID uuid.UUID) error) {
+	u, ok := UserFrom(r.Context())
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	if u.State != user.StateActive {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	if err := apply(r.Context(), u.ID, id); err != nil {
+		if errors.Is(err, guestbook.ErrEntryNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		s.Logger.ErrorContext(r.Context(), "set guestbook entry state", slog.String("error", err.Error()))
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

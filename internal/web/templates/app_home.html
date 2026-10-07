@@ -25,6 +25,21 @@
 </form>
 {{with .Error}}<p role="alert">{{.}}</p>{{end}}
 
+<h2>Tu libro de visitas</h2>
+{{range .Guestbook}}
+<article>
+<p><a href="{{.AuthorURL}}">{{.AuthorHandle}}</a> · {{.Date}}{{if .Hidden}} <small>(oculto)</small>{{end}}</p>
+<p>{{.Body}}</p>
+{{if .Hidden}}<form method="post" action="/guestbook/entries/{{.ID}}/show">
+<button type="submit">Mostrar</button>
+</form>{{else}}<form method="post" action="/guestbook/entries/{{.ID}}/hide">
+<button type="submit">Ocultar</button>
+</form>{{end}}
+</article>
+{{else}}
+<p>Todavía nadie firmó tu libro.</p>
+{{end}}
+
 <form method="post" action="/logout">
 <button type="submit">Sign out</button>
 </form>

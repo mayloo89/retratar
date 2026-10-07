@@ -13,6 +13,9 @@ import (
 // PageLimit is how many entries a public page shows.
 const PageLimit = 20
 
+// OwnerLimit is how many entries the owner's dashboard lists, of any state.
+const OwnerLimit = 50
+
 // maxBodyRunes is the entry's length limit, counted in runes rather than
 // bytes so an accented character costs the same as a plain one. It matches
 // the CHECK on guestbook_entries.body.
@@ -44,10 +47,12 @@ func NormaliseBody(raw string) (string, error) {
 	return body, nil
 }
 
-// Entry is one visible guestbook entry, with its author's handle.
+// Entry is one guestbook entry, with its author's handle. Hidden is only
+// ever true for entries returned by [Service.Own].
 type Entry struct {
 	ID           uuid.UUID
 	AuthorHandle string
 	Body         string
 	CreatedAt    time.Time
+	Hidden       bool
 }

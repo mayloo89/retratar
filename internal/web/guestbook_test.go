@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/mayloo89/retratar/internal/config"
 	"github.com/mayloo89/retratar/internal/guestbook"
 	"github.com/mayloo89/retratar/internal/mood"
@@ -98,13 +100,13 @@ func TestPage_ShowsGuestbookEntries(t *testing.T) {
 	guestbookAccount(t, srv, "a@example.com", "a")
 	bCookie, _ := guestbookAccount(t, srv, "b@example.com", "b")
 
-	request(t, h, http.MethodPost, guestbookAppHost, "/firmar/a", signForm("hola desde b"), bCookie).Body.Close()
+	request(t, h, http.MethodPost, guestbookAppHost, "/sign/a", signForm("hola desde b"), bCookie).Body.Close()
 
 	body := pageBody(t, h, "a.retrat.ar")
 	for _, want := range []string{
 		"hola desde b",
 		`<a href="https://b.retrat.ar/">b</a>`,
-		`href="https://retratar.com.ar/firmar/a"`,
+		`href="https://retratar.com.ar/sign/a"`,
 		"Firmá el libro de a",
 	} {
 		if !strings.Contains(body, want) {
@@ -178,6 +180,18 @@ func TestPage_EmptyGuestbook(t *testing.T) {
 	}
 }
 
+func TestGuestbookForm_OldPathIsGone(t *testing.T) {
+	srv, _ := newLoginServer(t)
+	h := srv.Handler()
+	guestbookAccount(t, srv, "a@example.com", "a")
+
+	resp := request(t, h, http.MethodGet, guestbookAppHost, "/firmar/a", nil)
+	resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("GET /firmar/a status = %d, want 404", resp.StatusCode)
+	}
+}
+
 func TestGuestbookForm_States(t *testing.T) {
 	srv, _ := newLoginServer(t)
 	h := srv.Handler()
@@ -192,12 +206,12 @@ func TestGuestbookForm_States(t *testing.T) {
 		status int
 		want   string
 	}{
-		{"not signed in", "/firmar/a", nil, http.StatusOK, "Ingresá para firmar el libro de a."},
-		{"no handle", "/firmar/a", noHandle, http.StatusOK, "Elegí tu nombre de usuario para firmar."},
-		{"own page", "/firmar/a", aCookie, http.StatusOK, "No podés firmar tu propio libro."},
-		{"valid signer", "/firmar/a", bCookie, http.StatusOK, `<textarea id="body" name="body" maxlength="280"`},
-		{"handle is case-insensitive", "/firmar/A", bCookie, http.StatusOK, `action="/firmar/a"`},
-		{"unknown handle", "/firmar/nadie", bCookie, http.StatusNotFound, ""},
+		{"not signed in", "/sign/a", nil, http.StatusOK, "Ingresá para firmar el libro de a."},
+		{"no handle", "/sign/a", noHandle, http.StatusOK, "Elegí tu nombre de usuario para firmar."},
+		{"own page", "/sign/a", aCookie, http.StatusOK, "No podés firmar tu propio libro."},
+		{"valid signer", "/sign/a", bCookie, http.StatusOK, `<textarea id="body" name="body" maxlength="280"`},
+		{"handle is case-insensitive", "/sign/A", bCookie, http.StatusOK, `action="/sign/a"`},
+		{"unknown handle", "/sign/nadie", bCookie, http.StatusNotFound, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -222,7 +236,7 @@ func TestGuestbookSign_RedirectsToPage(t *testing.T) {
 	_, a := guestbookAccount(t, srv, "a@example.com", "a")
 	bCookie, _ := guestbookAccount(t, srv, "b@example.com", "b")
 
-	resp := request(t, h, http.MethodPost, guestbookAppHost, "/firmar/a", signForm("  hola  "), bCookie)
+	resp := request(t, h, http.MethodPost, guestbookAppHost, "/sign/a", signForm("  hola  "), bCookie)
 	resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
 	if resp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("status = %d, want 303", resp.StatusCode)
@@ -275,7 +289,7 @@ func TestGuestbookSign_Rejects(t *testing.T) {
 			// Each case posts from its own address, so none depends on how
 			// much of the writes limiter's burst earlier cases spent.
 			addr := fmt.Sprintf("198.51.100.%d:5000", i+1)
-			resp := requestFromWithCookies(t, h, addr, http.MethodPost, guestbookAppHost, "/firmar/a", form, cookies...)
+			resp := requestFromWithCookies(t, h, addr, http.MethodPost, guestbookAppHost, "/sign/a", form, cookies...)
 			if resp.StatusCode != tt.status {
 				t.Fatalf("status = %d, want %d", resp.StatusCode, tt.status)
 			}
@@ -303,7 +317,7 @@ func TestGuestbookSign_InvalidBodyKeepsText(t *testing.T) {
 	bCookie, _ := guestbookAccount(t, srv, "b@example.com", "b")
 
 	text := strings.Repeat("ñ", 281)
-	resp := request(t, h, http.MethodPost, guestbookAppHost, "/firmar/a", signForm(text), bCookie)
+	resp := request(t, h, http.MethodPost, guestbookAppHost, "/sign/a", signForm(text), bCookie)
 	defer resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
 	body := readBody(t, resp)
 	if !strings.Contains(body, text) {
@@ -318,7 +332,7 @@ func TestGuestbookSign_CrossOriginRefused(t *testing.T) {
 	bCookie, _ := guestbookAccount(t, srv, "b@example.com", "b")
 
 	resp := requestWithBodyHeaders(t, h, map[string]string{"Sec-Fetch-Site": "cross-site"},
-		http.MethodPost, guestbookAppHost, "/firmar/a", signForm("hola"), bCookie)
+		http.MethodPost, guestbookAppHost, "/sign/a", signForm("hola"), bCookie)
 	resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403", resp.StatusCode)
@@ -342,7 +356,7 @@ func TestGuestbookSign_RateLimited(t *testing.T) {
 
 	statuses := make([]int, 12)
 	for i := range statuses {
-		resp := requestFrom(t, h, "203.0.113.10:5000", http.MethodPost, guestbookAppHost, "/firmar/a", signForm("hola"))
+		resp := requestFrom(t, h, "203.0.113.10:5000", http.MethodPost, guestbookAppHost, "/sign/a", signForm("hola"))
 		statuses[i] = resp.StatusCode
 		resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
 	}
@@ -355,5 +369,174 @@ func TestGuestbookSign_RateLimited(t *testing.T) {
 		if (i < firstBlocked) == (s == http.StatusTooManyRequests) {
 			t.Fatalf("request %d has status %d around the first block at %d: %v", i+1, s, firstBlocked, statuses)
 		}
+	}
+}
+
+// hideRequest posts to the owner's hide or show route from a fresh client
+// address each time, so a test with several POSTs never meets the writes
+// limiter. Tests using it must not run in parallel.
+var hideAddr int
+
+func hideRequest(t *testing.T, h http.Handler, action string, id uuid.UUID, cookies ...*http.Cookie) (status int, location string) {
+	t.Helper()
+	hideAddr++
+	addr := fmt.Sprintf("192.0.2.%d:5000", hideAddr)
+	resp := requestFromWithCookies(t, h, addr, http.MethodPost, guestbookAppHost,
+		"/guestbook/entries/"+id.String()+"/"+action, nil, cookies...)
+	resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
+	return resp.StatusCode, resp.Header.Get("Location")
+}
+
+func TestDashboard_ListsOwnEntriesWithHideButtons(t *testing.T) {
+	srv, _ := newLoginServer(t)
+	h := srv.Handler()
+	aCookie, a := guestbookAccount(t, srv, "a@example.com", "a")
+	_, b := guestbookAccount(t, srv, "b@example.com", "b")
+	_, c := guestbookAccount(t, srv, "c@example.com", "c")
+	shown, err := srv.Guestbook.Sign(t.Context(), a.ID, b.ID, "entrada visible")
+	if err != nil {
+		t.Fatalf("Sign() error = %v", err)
+	}
+	hidden, err := srv.Guestbook.Sign(t.Context(), a.ID, c.ID, "entrada oculta")
+	if err != nil {
+		t.Fatalf("Sign() error = %v", err)
+	}
+	if err = srv.Guestbook.Hide(t.Context(), a.ID, hidden.ID); err != nil {
+		t.Fatalf("Hide() error = %v", err)
+	}
+
+	resp := request(t, h, http.MethodGet, guestbookAppHost, "/", nil, aCookie)
+	defer resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
+	body := readBody(t, resp)
+	for _, want := range []string{
+		"Tu libro de visitas",
+		"entrada visible",
+		`action="/guestbook/entries/` + shown.ID.String() + `/hide"`,
+		"Ocultar",
+		"entrada oculta",
+		`action="/guestbook/entries/` + hidden.ID.String() + `/show"`,
+		"Mostrar",
+		"(oculto)",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("dashboard = %q, want it to contain %q", body, want)
+		}
+	}
+	if n := strings.Count(body, "(oculto)"); n != 1 {
+		t.Errorf("dashboard has %d (oculto) labels, want 1", n)
+	}
+}
+
+func TestDashboard_EmptyGuestbook(t *testing.T) {
+	srv, _ := newLoginServer(t)
+	h := srv.Handler()
+	aCookie, _ := guestbookAccount(t, srv, "a@example.com", "a")
+
+	resp := request(t, h, http.MethodGet, guestbookAppHost, "/", nil, aCookie)
+	defer resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
+	body := readBody(t, resp)
+	if !strings.Contains(body, "Todavía nadie firmó tu libro.") {
+		t.Errorf("dashboard = %q, want the empty guestbook text", body)
+	}
+}
+
+func TestGuestbookHide_RemovesFromPublicPage(t *testing.T) {
+	srv, _ := newLoginServer(t)
+	h := srv.Handler()
+	aCookie, a := guestbookAccount(t, srv, "a@example.com", "a")
+	_, b := guestbookAccount(t, srv, "b@example.com", "b")
+	e, err := srv.Guestbook.Sign(t.Context(), a.ID, b.ID, "hola desde b")
+	if err != nil {
+		t.Fatalf("Sign() error = %v", err)
+	}
+
+	if status, loc := hideRequest(t, h, "hide", e.ID, aCookie); status != http.StatusSeeOther || loc != "/" {
+		t.Fatalf("hide = %d to %q, want 303 to /", status, loc)
+	}
+	if body := pageBody(t, h, "a.retrat.ar"); strings.Contains(body, "hola desde b") {
+		t.Errorf("page still shows the hidden entry: %q", body)
+	}
+
+	if status, loc := hideRequest(t, h, "show", e.ID, aCookie); status != http.StatusSeeOther || loc != "/" {
+		t.Fatalf("show = %d to %q, want 303 to /", status, loc)
+	}
+	if body := pageBody(t, h, "a.retrat.ar"); !strings.Contains(body, "hola desde b") {
+		t.Errorf("page does not show the entry again: %q", body)
+	}
+}
+
+func TestGuestbookHide_OnlyOwner(t *testing.T) {
+	srv, _ := newLoginServer(t)
+	h := srv.Handler()
+	_, a := guestbookAccount(t, srv, "a@example.com", "a")
+	bCookie, b := guestbookAccount(t, srv, "b@example.com", "b")
+	e, err := srv.Guestbook.Sign(t.Context(), a.ID, b.ID, "hola")
+	if err != nil {
+		t.Fatalf("Sign() error = %v", err)
+	}
+
+	// b wrote the entry but does not own the page.
+	if status, _ := hideRequest(t, h, "hide", e.ID, bCookie); status != http.StatusNotFound {
+		t.Errorf("hide by another user = %d, want 404", status)
+	}
+	if status, loc := hideRequest(t, h, "hide", e.ID); status != http.StatusSeeOther || loc != "/login" {
+		t.Errorf("hide signed out = %d to %q, want 303 to /login", status, loc)
+	}
+
+	entries, err := srv.Guestbook.Visible(t.Context(), a.ID, guestbook.PageLimit)
+	if err != nil {
+		t.Fatalf("Visible() error = %v", err)
+	}
+	if len(entries) != 1 {
+		t.Errorf("%d visible entries, want the one entry untouched", len(entries))
+	}
+}
+
+func TestGuestbookHide_NoHandleRedirectsHome(t *testing.T) {
+	srv, _ := newLoginServer(t)
+	h := srv.Handler()
+	noHandle, _ := guestbookAccount(t, srv, "c@example.com", "")
+
+	if status, loc := hideRequest(t, h, "hide", uuid.New(), noHandle); status != http.StatusSeeOther || loc != "/" {
+		t.Errorf("hide without a handle = %d to %q, want 303 to /", status, loc)
+	}
+}
+
+func TestGuestbookHide_BadID(t *testing.T) {
+	srv, _ := newLoginServer(t)
+	h := srv.Handler()
+	aCookie, _ := guestbookAccount(t, srv, "a@example.com", "a")
+
+	for _, action := range []string{"hide", "show"} {
+		resp := request(t, h, http.MethodPost, guestbookAppHost, "/guestbook/entries/not-a-uuid/"+action, nil, aCookie)
+		resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("%s with a bad ID = %d, want 404", action, resp.StatusCode)
+		}
+	}
+}
+
+func TestGuestbookHide_CrossOriginRefused(t *testing.T) {
+	srv, _ := newLoginServer(t)
+	h := srv.Handler()
+	aCookie, a := guestbookAccount(t, srv, "a@example.com", "a")
+	_, b := guestbookAccount(t, srv, "b@example.com", "b")
+	e, err := srv.Guestbook.Sign(t.Context(), a.ID, b.ID, "hola")
+	if err != nil {
+		t.Fatalf("Sign() error = %v", err)
+	}
+
+	resp := requestWithBodyHeaders(t, h, map[string]string{"Sec-Fetch-Site": "cross-site"},
+		http.MethodPost, guestbookAppHost, "/guestbook/entries/"+e.ID.String()+"/hide", nil, aCookie)
+	resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", resp.StatusCode)
+	}
+	entries, err := srv.Guestbook.Visible(t.Context(), a.ID, guestbook.PageLimit)
+	if err != nil {
+		t.Fatalf("Visible() error = %v", err)
+	}
+	if len(entries) != 1 {
+		t.Errorf("%d visible entries, want the entry untouched", len(entries))
 	}
 }

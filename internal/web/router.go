@@ -124,8 +124,10 @@ func (s *Server) appRoutes(writes, logins48 *rateLimiter) http.Handler {
 	mux.HandleFunc("GET /handle", s.handleClaimForm)
 	mux.Handle("POST /handle", writes.rateLimit(http.HandlerFunc(s.handleClaimSubmit)))
 	mux.Handle("POST /mood", writes.rateLimit(http.HandlerFunc(s.handleMoodSubmit)))
-	mux.HandleFunc("GET /firmar/{handle}", s.handleGuestbookForm)
-	mux.Handle("POST /firmar/{handle}", writes.rateLimit(http.HandlerFunc(s.handleGuestbookSign)))
+	mux.HandleFunc("GET /sign/{handle}", s.handleGuestbookForm)
+	mux.Handle("POST /sign/{handle}", writes.rateLimit(http.HandlerFunc(s.handleGuestbookSign)))
+	mux.Handle("POST /guestbook/entries/{id}/hide", writes.rateLimit(http.HandlerFunc(s.handleGuestbookHide)))
+	mux.Handle("POST /guestbook/entries/{id}/show", writes.rateLimit(http.HandlerFunc(s.handleGuestbookShow)))
 	// GET /random is not rate-limited: it is a cheap read and sends no mail.
 	mux.HandleFunc("GET /random", s.handleRandom)
 	return mux

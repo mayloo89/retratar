@@ -38,6 +38,56 @@ func (q *Queries) CreateGuestbookEntry(ctx context.Context, arg CreateGuestbookE
 	return i, err
 }
 
+const listOwnGuestbookEntries = `-- name: ListOwnGuestbookEntries :many
+SELECT e.id, e.body, e.state, e.created_at, u.handle AS author_handle
+FROM guestbook_entries e
+JOIN users u ON u.id = e.author_user_id
+WHERE e.page_user_id = $1
+ORDER BY e.created_at DESC
+LIMIT $2
+`
+
+type ListOwnGuestbookEntriesParams struct {
+	PageUserID uuid.UUID
+	Lim        int32
+}
+
+type ListOwnGuestbookEntriesRow struct {
+	ID           uuid.UUID
+	Body         string
+	State        string
+	CreatedAt    pgtype.Timestamptz
+	AuthorHandle *string
+}
+
+// The owner's view of their own page: every state, so a hidden entry stays
+// listed and can be shown again.
+func (q *Queries) ListOwnGuestbookEntries(ctx context.Context, arg ListOwnGuestbookEntriesParams) ([]ListOwnGuestbookEntriesRow, error) {
+	rows, err := q.db.Query(ctx, listOwnGuestbookEntries, arg.PageUserID, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOwnGuestbookEntriesRow
+	for rows.Next() {
+		var i ListOwnGuestbookEntriesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Body,
+			&i.State,
+			&i.CreatedAt,
+			&i.AuthorHandle,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listVisibleGuestbookEntries = `-- name: ListVisibleGuestbookEntries :many
 SELECT e.id, e.body, e.created_at, u.handle AS author_handle
 FROM guestbook_entries e
@@ -84,4 +134,25 @@ func (q *Queries) ListVisibleGuestbookEntries(ctx context.Context, arg ListVisib
 		return nil, err
 	}
 	return items, nil
+}
+
+const setGuestbookEntryState = `-- name: SetGuestbookEntryState :execrows
+UPDATE guestbook_entries SET state = $1
+WHERE id = $2 AND page_user_id = $3
+`
+
+type SetGuestbookEntryStateParams struct {
+	State      string
+	ID         uuid.UUID
+	PageUserID uuid.UUID
+}
+
+// The page_user_id condition is the authorization check: an entry on someone
+// else's page matches no row, so the caller sees zero rows affected.
+func (q *Queries) SetGuestbookEntryState(ctx context.Context, arg SetGuestbookEntryStateParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setGuestbookEntryState, arg.State, arg.ID, arg.PageUserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
