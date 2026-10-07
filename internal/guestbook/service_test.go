@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/mayloo89/retratar/internal/guestbook"
@@ -166,5 +167,100 @@ func TestDeletingUserCascadesEntries(t *testing.T) {
 	}
 	if n := countEntries(t, pool); n != 0 {
 		t.Errorf("%d entries after deleting page owner a, want 0", n)
+	}
+}
+
+func TestOwnIncludesHidden(t *testing.T) {
+	pool := testdb.New(t)
+	page := newAccount(t, pool, "a@example.com", "a")
+	b := newAccount(t, pool, "b@example.com", "b")
+	svc := guestbook.NewService(pool)
+
+	first, err := svc.Sign(t.Context(), page.ID, b.ID, "oculto")
+	if err != nil {
+		t.Fatalf("Sign() error = %v, want nil", err)
+	}
+	if _, err = svc.Sign(t.Context(), page.ID, b.ID, "visible"); err != nil {
+		t.Fatalf("Sign() error = %v, want nil", err)
+	}
+	if err = svc.Hide(t.Context(), page.ID, first.ID); err != nil {
+		t.Fatalf("Hide() error = %v, want nil", err)
+	}
+
+	got, err := svc.Own(t.Context(), page.ID, guestbook.OwnerLimit)
+	if err != nil {
+		t.Fatalf("Own() error = %v, want nil", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("Own() returned %d entries, want 2", len(got))
+	}
+	// Newest first: "visible" was signed last.
+	if got[0].Body != "visible" || got[0].Hidden {
+		t.Errorf("Own()[0] = %+v, want the visible entry", got[0])
+	}
+	if got[1].Body != "oculto" || !got[1].Hidden || got[1].AuthorHandle != "b" {
+		t.Errorf("Own()[1] = %+v, want the hidden entry by b", got[1])
+	}
+
+	visible, err := svc.Visible(t.Context(), page.ID, guestbook.PageLimit)
+	if err != nil {
+		t.Fatalf("Visible() error = %v, want nil", err)
+	}
+	if len(visible) != 1 || visible[0].Body != "visible" {
+		t.Errorf("Visible() = %+v, want only the visible entry", visible)
+	}
+}
+
+func TestHideAndShow(t *testing.T) {
+	pool := testdb.New(t)
+	page := newAccount(t, pool, "a@example.com", "a")
+	b := newAccount(t, pool, "b@example.com", "b")
+	svc := guestbook.NewService(pool)
+
+	e, err := svc.Sign(t.Context(), page.ID, b.ID, "hola")
+	if err != nil {
+		t.Fatalf("Sign() error = %v, want nil", err)
+	}
+
+	if err = svc.Hide(t.Context(), page.ID, e.ID); err != nil {
+		t.Fatalf("Hide() error = %v, want nil", err)
+	}
+	if got, _ := svc.Visible(t.Context(), page.ID, guestbook.PageLimit); len(got) != 0 {
+		t.Errorf("Visible() after Hide = %+v, want none", got)
+	}
+
+	if err = svc.Show(t.Context(), page.ID, e.ID); err != nil {
+		t.Fatalf("Show() error = %v, want nil", err)
+	}
+	if got, _ := svc.Visible(t.Context(), page.ID, guestbook.PageLimit); len(got) != 1 {
+		t.Errorf("Visible() after Show = %+v, want the entry back", got)
+	}
+}
+
+func TestHideOtherPagesEntryIsNotFound(t *testing.T) {
+	pool := testdb.New(t)
+	a := newAccount(t, pool, "a@example.com", "a")
+	b := newAccount(t, pool, "b@example.com", "b")
+	svc := guestbook.NewService(pool)
+
+	e, err := svc.Sign(t.Context(), a.ID, b.ID, "hola")
+	if err != nil {
+		t.Fatalf("Sign() error = %v, want nil", err)
+	}
+
+	// b is not the owner of a's page.
+	if err = svc.Hide(t.Context(), b.ID, e.ID); !errors.Is(err, guestbook.ErrEntryNotFound) {
+		t.Errorf("Hide() by another owner error = %v, want ErrEntryNotFound", err)
+	}
+	if err = svc.Show(t.Context(), b.ID, e.ID); !errors.Is(err, guestbook.ErrEntryNotFound) {
+		t.Errorf("Show() by another owner error = %v, want ErrEntryNotFound", err)
+	}
+	if got, _ := svc.Visible(t.Context(), a.ID, guestbook.PageLimit); len(got) != 1 {
+		t.Errorf("Visible() = %+v, want the entry untouched", got)
+	}
+
+	// An ID that exists nowhere is reported the same way.
+	if err = svc.Hide(t.Context(), a.ID, uuid.New()); !errors.Is(err, guestbook.ErrEntryNotFound) {
+		t.Errorf("Hide() of unknown ID error = %v, want ErrEntryNotFound", err)
 	}
 }
