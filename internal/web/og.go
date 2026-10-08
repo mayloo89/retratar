@@ -59,7 +59,7 @@ func (s *Server) handleOGImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	card := ogcard.Card{Handle: u.Handle, MoodClass: "none"}
+	card := ogcard.Card{Handle: u.Handle, Name: u.DisplayName, MoodClass: "none"}
 
 	var updatedAt time.Time
 	m, err := s.Moods.CurrentMood(r.Context(), u.ID)
@@ -81,7 +81,7 @@ func (s *Server) handleOGImage(w http.ResponseWriter, r *http.Request) {
 	// content-derived ETag lets a repeat scrape or paste short-circuit to a
 	// 304 before Render ever runs — the actual rasterisation is the
 	// expensive part of this unauthenticated route.
-	etag := ogETag(u.Handle, card.MoodClass, card.MoodNote, updatedAt)
+	etag := ogETag(u.Handle, card.Name, card.MoodClass, card.MoodNote, updatedAt)
 	w.Header().Set("Cache-Control", "public, max-age=300")
 	w.Header().Set("ETag", etag)
 	if r.Header.Get("If-None-Match") == etag {
@@ -105,8 +105,8 @@ func (s *Server) handleOGImage(w http.ResponseWriter, r *http.Request) {
 // draws. It is safe as a strong validator because Render is deterministic
 // (see TestRender_IsDeterministic): the same inputs always produce the same
 // PNG bytes, so a repaint of the same mood never invalidates a scraper's or
-// a client's cache, and a mood change always does.
-func ogETag(handle, moodClass, note string, updatedAt time.Time) string {
-	sum := sha256.Sum256([]byte(handle + "\x00" + moodClass + "\x00" + note + "\x00" + updatedAt.UTC().Format(time.RFC3339Nano)))
+// a client's cache, and a mood or name change always does.
+func ogETag(handle, name, moodClass, note string, updatedAt time.Time) string {
+	sum := sha256.Sum256([]byte(handle + "\x00" + name + "\x00" + moodClass + "\x00" + note + "\x00" + updatedAt.UTC().Format(time.RFC3339Nano)))
 	return `"` + hex.EncodeToString(sum[:16]) + `"`
 }
