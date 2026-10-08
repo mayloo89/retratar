@@ -39,7 +39,10 @@ func TestAppTemplatesAreSpanish(t *testing.T) {
 	token := sender.token(t, srv.Config.BaseURL())
 
 	pages["confirm"] = fetch(http.MethodGet, "/login/"+token, nil)
-	pages["invalid"] = fetch(http.MethodGet, "/login/not-a-real-token", nil)
+	// GET /login/{token} always renders the confirm page; the invalid page
+	// only appears when a POST arrives without the nonce cookie.
+	pages["invalid"] = fetch(http.MethodPost, "/login/not-a-real-token",
+		strings.NewReader(url.Values{"nonce": {"x"}}.Encode()))
 
 	sessionCookie := completeLogin(t, h, host, sender, srv.Config.BaseURL(), "ana@example.com")
 	pages["/handle"] = fetch(http.MethodGet, "/handle", nil, sessionCookie)
@@ -48,6 +51,13 @@ func TestAppTemplatesAreSpanish(t *testing.T) {
 		strings.NewReader(url.Values{"handle": {"ana-lucia"}}.Encode()), sessionCookie)
 	claim.Body.Close() //nolint:errcheck // httptest body close cannot fail
 	pages["/"] = fetch(http.MethodGet, "/", nil, sessionCookie)
+
+	if !strings.Contains(pages["confirm"], "Confirmá que sos vos") {
+		t.Errorf("confirm: body is not the confirm page: %q", pages["confirm"])
+	}
+	if !strings.Contains(pages["invalid"], "Este link ya no sirve") {
+		t.Errorf("invalid: body is not the invalid-link page: %q", pages["invalid"])
+	}
 
 	english := []string{"Sign in", "Your page", "Update mood", "Check your inbox"}
 	for name, body := range pages {
