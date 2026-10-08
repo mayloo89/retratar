@@ -9,6 +9,7 @@ import (
 
 	"github.com/mayloo89/retratar/internal/mood"
 	"github.com/mayloo89/retratar/internal/ogcard"
+	"github.com/mayloo89/retratar/internal/web"
 )
 
 func TestHandlePage_RendersMoodForAClaimedHandle(t *testing.T) {
@@ -147,5 +148,72 @@ func TestPage_LinksToRandom(t *testing.T) {
 	body, _ := io.ReadAll(page.Body)
 	if !strings.Contains(string(body), `href="https://retratar.com.ar/random"`) {
 		t.Errorf("page body = %q, want a link to https://retratar.com.ar/random", body)
+	}
+}
+
+// claimAna logs in and claims the handle "ana", returning the session cookie.
+func claimAna(t *testing.T, srv *web.Server, sender *stubSender, h http.Handler) *http.Cookie {
+	t.Helper()
+	appHost := srv.Config.AppHost
+	sessionCookie := completeLogin(t, h, appHost, sender, srv.Config.BaseURL(), "ana@example.com")
+	request(t, h, http.MethodPost, appHost, "/handle",
+		strings.NewReader(url.Values{"handle": {"ana"}}.Encode()), sessionCookie).Body.Close()
+	return sessionCookie
+}
+
+func getBody(t *testing.T, h http.Handler, host, path string) string {
+	t.Helper()
+	resp := request(t, h, http.MethodGet, host, path, nil)
+	defer resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET %s%s status = %d, want 200", host, path, resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	return string(body)
+}
+
+func TestPage_RendersIdentityHeader(t *testing.T) {
+	srv, sender := newLoginServer(t)
+	h := srv.Handler()
+	claimAna(t, srv, sender, h)
+
+	body := getBody(t, h, "ana.retrat.ar", "/")
+	for _, want := range []string{
+		`<h1 class="blk-name">ana</h1>`,
+		`<p class="blk-address">ana.retrat.ar</p>`,
+		`<div class="blk-frame" aria-hidden="true">A</div>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("page body = %q, want it to contain %q", body, want)
+		}
+	}
+}
+
+func TestPage_AddressFollowsConfig(t *testing.T) {
+	srv, sender := newLoginServer(t)
+	srv.Config.PagesHost = "pages.localhost"
+	h := srv.Handler()
+	claimAna(t, srv, sender, h)
+
+	body := getBody(t, h, "ana.pages.localhost", "/")
+	if want := `<p class="blk-address">ana.pages.localhost</p>`; !strings.Contains(body, want) {
+		t.Errorf("page body = %q, want it to contain %q", body, want)
+	}
+	if strings.Contains(body, "retrat.ar") {
+		t.Errorf("page body = %q, want no hardcoded retrat.ar", body)
+	}
+}
+
+func TestThemeCSS_NoShadowNoFontFace(t *testing.T) {
+	srv, _ := newLoginServer(t)
+
+	css := getBody(t, srv.Handler(), "ana.retrat.ar", "/theme.css")
+	for _, banned := range []string{"box-shadow", "@font-face"} {
+		if strings.Contains(css, banned) {
+			t.Errorf("theme.css contains %q, want none", banned)
+		}
 	}
 }
