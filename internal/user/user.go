@@ -17,6 +17,8 @@ import (
 	"net/mail"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -58,6 +60,11 @@ const LoginBudgetWindow = TokenTTL
 // maxEmailLength is the longest address SMTP is required to carry.
 const maxEmailLength = 254
 
+// maxDisplayNameRunes is the display name's length limit, counted in runes so
+// an accented letter costs the same as a plain one. The database CHECK on
+// users.display_name uses the same number.
+const maxDisplayNameRunes = 40
+
 // State is where an account sits in its lifecycle.
 type State string
 
@@ -84,6 +91,21 @@ type User struct {
 	Tier      string
 	Locale    string
 	CreatedAt time.Time
+
+	// DisplayName is the optional name the owner chose to be shown as. It is
+	// empty when unset, for the same reason Handle is; use [User.ShownName]
+	// to display one.
+	DisplayName string
+}
+
+// ShownName is how the account's page identifies its owner: the display name
+// if one is set, otherwise the handle. The address line on a page always shows
+// the handle, so falling back never hides who the page belongs to.
+func (u User) ShownName() string {
+	if u.DisplayName != "" {
+		return u.DisplayName
+	}
+	return u.Handle
 }
 
 // Service issues and redeems magic links.
@@ -283,6 +305,55 @@ func (s *Service) ClaimHandle(ctx context.Context, id uuid.UUID, handle string) 
 	return fromRow(row), nil
 }
 
+// SetDisplayName sets or clears the account's display name. raw goes through
+// [NormaliseDisplayName]; an empty result stores NULL, which clears the name.
+func (s *Service) SetDisplayName(ctx context.Context, id uuid.UUID, raw string) (User, error) {
+	name, err := NormaliseDisplayName(raw)
+	if err != nil {
+		return User{}, err
+	}
+
+	// A nil pointer is NULL. An empty string must never reach the column: the
+	// CHECK rejects it, and "no name" has one representation.
+	var arg *string
+	if name != "" {
+		arg = &name
+	}
+
+	row, err := s.queries.SetDisplayName(ctx, store.SetDisplayNameParams{ID: id, DisplayName: arg})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return User{}, ErrUserNotFound
+		}
+		return User{}, fmt.Errorf("set display name: %w", err)
+	}
+	return fromRow(row), nil
+}
+
+// NormaliseDisplayName trims a display name and enforces the shape a page can
+// show as plain text on one line. Empty is valid and means "clear it".
+//
+// Anything printable is allowed — accents, emoji, spaces, mixed case. Control
+// characters, line breaks included, and invalid UTF-8 are rejected so the name
+// stays on one line wherever it is rendered, without the renderer stripping
+// anything itself. The result is user text on a public page: callers must only
+// ever render it through html/template's escaping.
+func NormaliseDisplayName(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", nil
+	}
+	if !utf8.ValidString(trimmed) || utf8.RuneCountInString(trimmed) > maxDisplayNameRunes {
+		return "", ErrInvalidDisplayName
+	}
+	for _, r := range trimmed {
+		if unicode.IsControl(r) {
+			return "", ErrInvalidDisplayName
+		}
+	}
+	return trimmed, nil
+}
+
 // isUniqueViolation reports whether err is a Postgres unique-index conflict.
 func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
@@ -353,6 +424,9 @@ func fromRow(row store.User) User {
 	}
 	if row.Handle != nil {
 		u.Handle = *row.Handle
+	}
+	if row.DisplayName != nil {
+		u.DisplayName = *row.DisplayName
 	}
 	return u
 }

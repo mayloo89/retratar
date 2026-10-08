@@ -8,6 +8,14 @@
 <h1>Your page</h1>
 {{with .PageURL}}<p><a href="{{.}}">{{.}}</a></p>{{end}}
 
+<form method="post" action="/name">
+<label for="name">Tu nombre</label>
+<input type="text" id="name" name="name" value="{{.DisplayName}}">
+<p>Así te ven en tu página. Podés dejarlo vacío.</p>
+<button type="submit">Guardar nombre</button>
+</form>
+{{with .NameError}}<p role="alert">{{.}}</p>{{end}}
+
 <h2>Mood</h2>
 {{if .HasMood}}
 <p>Current: {{.MoodLabel}}{{with .MoodNote}} — {{.}}{{end}}</p>

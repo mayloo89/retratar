@@ -42,4 +42,9 @@ var (
 	// ErrHandleAlreadySet means the account already has a handle. Handles are
 	// claimed once and never reassigned by this method.
 	ErrHandleAlreadySet = errors.New("account already has a handle")
+
+	// ErrInvalidDisplayName means the display name was too long, or held a
+	// control character, a line break or invalid UTF-8; see
+	// [NormaliseDisplayName].
+	ErrInvalidDisplayName = errors.New("invalid display name")
 )
