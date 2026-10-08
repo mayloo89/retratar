@@ -30,6 +30,13 @@ func TestNormaliseDisplayName(t *testing.T) {
 		{name: "line break", in: "Se\nba", wantErr: user.ErrInvalidDisplayName},
 		{name: "tab", in: "Se\tba", wantErr: user.ErrInvalidDisplayName},
 		{name: "carriage return", in: "Se\rba", wantErr: user.ErrInvalidDisplayName},
+		{name: "right-to-left override", in: "Seba\u202e", wantErr: user.ErrInvalidDisplayName},
+		{name: "left-to-right isolate", in: "\u2066Seba", wantErr: user.ErrInvalidDisplayName},
+		{name: "line separator", in: "Se\u2028ba", wantErr: user.ErrInvalidDisplayName},
+		{name: "paragraph separator", in: "Se\u2029ba", wantErr: user.ErrInvalidDisplayName},
+		{name: "right-to-left mark", in: "\u200fx", wantErr: user.ErrInvalidDisplayName},
+		{name: "left-to-right mark", in: "x\u200e", wantErr: user.ErrInvalidDisplayName},
+		{name: "family emoji keeps its joiners", in: "👨\u200d👩\u200d👧", want: "👨\u200d👩\u200d👧"},
 		{name: "invalid utf-8", in: "Se\xffba", wantErr: user.ErrInvalidDisplayName},
 	}
 	for _, tt := range tests {

@@ -347,11 +347,36 @@ func NormaliseDisplayName(raw string) (string, error) {
 		return "", ErrInvalidDisplayName
 	}
 	for _, r := range trimmed {
-		if unicode.IsControl(r) {
+		if unicode.IsControl(r) || isDisallowedFormat(r) {
 			return "", ErrInvalidDisplayName
 		}
 	}
 	return trimmed, nil
+}
+
+// isDisallowedFormat reports whether r is an invisible Unicode format or
+// separator character that unicode.IsControl misses but a display name must
+// not contain.
+//
+// The bidi embedding, override and isolate controls (U+202A–U+202E,
+// U+2066–U+2069) and the bidi marks (U+200E, U+200F) change how the text
+// around them is ordered. A right-to-left override can reverse what follows
+// it, so a name could be made to look like another name on the page, in
+// <title> and in link previews. U+2028 and U+2029 are line and paragraph
+// separators: line breaks that get past the "one line" rule.
+//
+// U+200D (zero-width joiner) stays allowed on purpose: multi-part emoji such
+// as families and skin-tone sequences cannot be written without it.
+func isDisallowedFormat(r rune) bool {
+	switch {
+	case r >= 0x202A && r <= 0x202E:
+		return true
+	case r >= 0x2066 && r <= 0x2069:
+		return true
+	case r == 0x200E, r == 0x200F, r == 0x2028, r == 0x2029:
+		return true
+	}
+	return false
 }
 
 // isUniqueViolation reports whether err is a Postgres unique-index conflict.
