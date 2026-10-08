@@ -3,8 +3,9 @@
 # The final image is distroless/static — no shell, no package manager, no libc.
 # If the process is ever compromised there is nothing in the image to pivot to.
 
-# The minor version must match the `go` line in go.mod; CI reads it from there.
-FROM golang:1.27-alpine AS build
+# The version must match the `toolchain` line in go.mod; CI reads it from
+# there, and Dependabot proposes patch bumps.
+FROM golang:1.27.2-alpine AS build
 
 WORKDIR /src
 

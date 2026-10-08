@@ -2,6 +2,8 @@ module github.com/mayloo89/retratar
 
 go 1.27.0
 
+toolchain go1.27.2
+
 tool (
 	github.com/sqlc-dev/sqlc/cmd/sqlc
 	golang.org/x/vuln/cmd/govulncheck
