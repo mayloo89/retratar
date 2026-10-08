@@ -35,9 +35,9 @@ func (s *Server) handleMoodSubmit(w http.ResponseWriter, r *http.Request) {
 	if _, err := s.Moods.SetMood(r.Context(), u.ID, key, note); err != nil {
 		switch {
 		case errors.Is(err, mood.ErrInvalidMood):
-			s.renderAppHome(w, r, http.StatusUnprocessableEntity, u, "Choose one of the moods listed.")
+			s.renderAppHome(w, r, http.StatusUnprocessableEntity, u, "Elegí uno de los estados de la lista.")
 		case errors.Is(err, mood.ErrInvalidNote):
-			s.renderAppHome(w, r, http.StatusUnprocessableEntity, u, "Note must be 60 characters or fewer, and one line.")
+			s.renderAppHome(w, r, http.StatusUnprocessableEntity, u, "La nota puede tener hasta 60 caracteres, en una sola línea.")
 		default:
 			s.Logger.ErrorContext(r.Context(), "set mood", slog.String("error", err.Error()))
 			http.Error(w, "internal server error", http.StatusInternalServerError)

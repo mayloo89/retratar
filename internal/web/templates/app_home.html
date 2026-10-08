@@ -1,27 +1,27 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
 <head>
 <meta charset="utf-8">
-<title>retratar</title>
+<title>Tu página · retratar</title>
 </head>
 <body>
-<h1>Your page</h1>
+<h1>Tu página</h1>
 {{with .PageURL}}<p><a href="{{.}}">{{.}}</a></p>{{end}}
 
-<h2>Mood</h2>
+<h2>Cómo estás</h2>
 {{if .HasMood}}
-<p>Current: {{.MoodLabel}}{{with .MoodNote}} — {{.}}{{end}}</p>
+<p>Ahora: {{.MoodLabel}}{{with .MoodNote}} ({{.}}){{end}}</p>
 {{else}}
-<p>No mood set yet.</p>
+<p>Todavía no elegiste cómo estás.</p>
 {{end}}
 <form method="post" action="/mood">
-<label for="mood_key">How are you</label>
+<label for="mood_key">¿Cómo estás?</label>
 <select id="mood_key" name="mood_key" required>
 {{range .MoodOptions}}<option value="{{.Key}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>
 {{end}}</select>
-<label for="note">Note (optional, 60 characters)</label>
+<label for="note">Una nota (opcional, hasta 60 caracteres)</label>
 <input type="text" id="note" name="note" maxlength="60" value="{{.MoodNote}}">
-<button type="submit">Update mood</button>
+<button type="submit">Guardar</button>
 </form>
 {{with .Error}}<p role="alert">{{.}}</p>{{end}}
 
@@ -41,7 +41,7 @@
 {{end}}
 
 <form method="post" action="/logout">
-<button type="submit">Sign out</button>
+<button type="submit">Salir</button>
 </form>
 </body>
 </html>

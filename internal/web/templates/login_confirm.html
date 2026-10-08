@@ -1,15 +1,15 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
 <head>
 <meta charset="utf-8">
-<title>Confirm sign-in</title>
+<title>Confirmá que sos vos</title>
 </head>
 <body>
-<h1>Confirm sign-in</h1>
-<p>Click below to finish signing in. Opening this page has not signed you in yet.</p>
+<h1>Confirmá que sos vos</h1>
+<p>Tocá el botón para terminar de entrar. Abrir este link todavía no te hizo entrar.</p>
 <form method="post" action="/login/{{.Token}}">
 <input type="hidden" name="nonce" value="{{.Nonce}}">
-<button type="submit">Sign in</button>
+<button type="submit">Entrar</button>
 </form>
 </body>
 </html>

@@ -48,10 +48,10 @@ func (s *Server) handleClaimSubmit(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, user.ErrInvalidHandle):
 			s.renderTemplate(w, http.StatusUnprocessableEntity, "claim_handle.html",
-				claimHandleData{Error: "Choose lowercase letters, numbers and hyphens only."})
+				claimHandleData{Error: "Usá solo minúsculas, números y guiones."})
 		case errors.Is(err, user.ErrHandleTaken):
 			s.renderTemplate(w, http.StatusConflict, "claim_handle.html",
-				claimHandleData{Error: "That handle is taken."})
+				claimHandleData{Error: "Esa dirección ya está tomada. Probá otra."})
 		case errors.Is(err, user.ErrHandleAlreadySet):
 			// Already claimed by a previous request — nothing left to do but
 			// send them where a claimed account belongs.
