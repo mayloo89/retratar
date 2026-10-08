@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+	"unicode"
 
 	"github.com/mayloo89/retratar/internal/guestbook"
 	"github.com/mayloo89/retratar/internal/mood"
@@ -21,7 +22,13 @@ import (
 // to drop straight into the page's CSS class, no escaping needed beyond
 // html/template's own auto-escaping.
 type pageData struct {
-	Handle    string
+	Handle string
+	// Initial is the handle's first rune, upper-cased, for the framed
+	// initial in the identity header. Display-only.
+	Initial string
+	// Address is the page's canonical host, without scheme, as shown under
+	// the name.
+	Address   string
 	HasMood   bool
 	MoodClass string
 	MoodLabel string
@@ -88,6 +95,8 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 	base := s.Config.PageBaseURL(u.Handle)
 	data := pageData{
 		Handle:        u.Handle,
+		Initial:       initialOf(u.Handle),
+		Address:       s.Config.PageHostFor(u.Handle),
 		MoodClass:     "none",
 		OGURL:         base + "/",
 		OGImageURL:    base + "/og.png",
@@ -138,4 +147,13 @@ func (s *Server) handleTheme(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=3600")
 	_, _ = w.Write(themeCSS)
+}
+
+// initialOf returns the first rune of s, upper-cased. A rune, not a byte, so
+// it stays right if handles ever stop being ASCII.
+func initialOf(s string) string {
+	for _, r := range s {
+		return string(unicode.ToUpper(r))
+	}
+	return ""
 }

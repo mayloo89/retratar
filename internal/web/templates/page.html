@@ -13,25 +13,35 @@
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 </head>
-<body class="blk-mood mood-{{.MoodClass}}">
-<h1 class="blk-identity">{{.Handle}}</h1>
+<body class="mood-{{.MoodClass}}">
+<main class="blk-sheet">
+<header class="blk-identity">
+<div class="blk-frame" aria-hidden="true">{{.Initial}}</div>
+<div><h1 class="blk-name">{{.Handle}}</h1><p class="blk-address">{{.Address}}</p></div>
+</header>
+<section class="blk-box blk-mood" aria-labelledby="blk-mood-title">
+<h2 class="blk-bar" id="blk-mood-title">cómo estoy</h2>
+<div class="blk-inner">
 {{if .HasMood}}
 <p class="blk-mood-label">{{.MoodLabel}}</p>
 {{if .MoodNote}}<p class="blk-mood-note">{{.MoodNote}}</p>{{end}}
 {{else}}
 <p class="blk-mood-empty">{{.OGDescription}}</p>
 {{end}}
-<section class="blk-guestbook">
-<h2>Libro de visitas</h2>
+</div>
+</section>
+<section class="blk-box blk-guestbook" aria-labelledby="blk-guestbook-title">
+<h2 class="blk-bar" id="blk-guestbook-title">libro de visitas</h2>
 {{if .Guestbook}}
 <ul>
-{{range .Guestbook}}<li><a href="{{.AuthorURL}}">{{.AuthorHandle}}</a> <time>{{.Date}}</time><p class="blk-guestbook-body">{{.Body}}</p></li>
+{{range .Guestbook}}<li><p class="blk-guestbook-meta"><a href="{{.AuthorURL}}">{{.AuthorHandle}}</a>, <time>{{.Date}}</time></p><p class="blk-guestbook-body">{{.Body}}</p></li>
 {{end}}</ul>
 {{else}}
-<p class="blk-guestbook-empty">Todavía nadie firmó.</p>
+<div class="blk-inner"><p class="blk-guestbook-empty">Todavía nadie firmó.</p></div>
 {{end}}
-<a href="{{.SignURL}}">Firmá el libro de {{.Handle}}</a>
+<a class="blk-sign" href="{{.SignURL}}">Firmá el libro de {{.Handle}}</a>
 </section>
-<nav class="blk-random"><a href="{{.RandomURL}}">Otra página al azar</a></nav>
+<p class="blk-random"><a href="{{.RandomURL}}">Otra página al azar</a></p>
+</main>
 </body>
 </html>
