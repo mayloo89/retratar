@@ -1,41 +1,40 @@
-/* retratar default theme.
+/* retratar default theme, "Página 2004": one framed sheet on a mood-tinted,
+ * diagonally striped background; mood-coloured title bars; system fonts only.
  *
  * One stylesheet, one class contract: .blk-* names blocks, .mood-<key>
  * tints the page. A future theme is another file against this same
  * contract, not a code change — see docs/architecture.md.
  */
 
+:root {
+	--paper: oklch(0.995 0.004 90);
+	--ink: oklch(0.27 0.012 90);
+	--ink-soft: oklch(0.42 0.012 90);
+}
+
 body {
+	--rule: color-mix(in oklab, var(--mood-fg) 40%, var(--paper));
+	--tint: color-mix(in oklab, var(--mood-bg) 55%, var(--paper));
 	margin: 0;
-	padding: 2rem 1.5rem;
-	font-family: system-ui, sans-serif;
 	min-height: 100vh;
 	box-sizing: border-box;
-	background: var(--mood-bg, #f4f4f4);
-	color: var(--mood-fg, #222);
-	transition: background-color 0.3s ease;
+	padding: 18px 10px 28px;
+	color: var(--ink);
+	font: 15px/1.55 Verdana, Geneva, "DejaVu Sans", sans-serif;
+	background-color: var(--mood-bg);
+	background-image: repeating-linear-gradient(45deg,
+		color-mix(in oklab, var(--mood-fg) 8%, transparent) 0 2px, transparent 2px 8px);
 }
 
-.blk-identity {
-	margin: 0 0 0.5rem;
-	font-size: 1.75rem;
+a {
+	color: var(--mood-fg);
+	text-underline-offset: 0.15em;
 }
 
-.blk-mood-label {
-	margin: 0 0 0.25rem;
-	font-weight: 600;
-	text-transform: capitalize;
-}
-
-.blk-mood-note {
-	margin: 0;
-	opacity: 0.85;
-}
-
-.blk-mood-empty {
-	margin: 0;
-	opacity: 0.6;
-	font-style: italic;
+a:focus-visible {
+	outline: 2px dashed var(--mood-fg);
+	outline-offset: 3px;
+	text-decoration: none;
 }
 
 .mood-feliz      { --mood-bg: #fff4cc; --mood-fg: #5c4a00; }
@@ -52,28 +51,148 @@ body {
 .mood-perdido    { --mood-bg: #d6d6d6; --mood-fg: #2b2b2b; }
 .mood-none       { --mood-bg: #f4f4f4; --mood-fg: #222; }
 
-.blk-guestbook {
-	margin-top: 2rem;
+/* The sheet: one framed page, like the content column of a 2004 site. */
+.blk-sheet {
+	max-width: 360px;
+	margin: 0 auto;
+	background: var(--paper);
+	border: 1px solid var(--mood-fg);
+}
+
+/* Identity: the name dominates; the address is quiet. */
+.blk-identity {
+	display: flex;
+	gap: 12px;
+	align-items: flex-end;
+	padding: 16px 14px 14px;
+	background: var(--tint);
+	border-bottom: 1px solid var(--rule);
+}
+
+.blk-frame {
+	flex: none;
+	width: 76px;
+	height: 76px;
+	display: grid;
+	place-items: center;
+	background: var(--paper);
+	border: 3px double var(--mood-fg);
+	font: bold 40px/1 "Trebuchet MS", "Lucida Grande", sans-serif;
+	color: var(--mood-fg);
+}
+
+.blk-name {
+	margin: 0;
+	min-width: 0;
+	overflow-wrap: anywhere;
+	font: bold clamp(34px, 10vw, 46px)/1 "Trebuchet MS", "Lucida Grande", sans-serif;
+	letter-spacing: -0.01em;
+	color: var(--mood-fg);
+}
+
+.blk-address {
+	margin: 6px 0 0;
+	font-size: 12px;
+	color: var(--ink-soft);
+	overflow-wrap: anywhere;
+}
+
+/* Boxes with title bars. The bars carry the mood colour. */
+.blk-box {
+	margin: 12px;
+	border: 1px solid var(--rule);
+}
+
+.blk-bar {
+	margin: 0;
+	padding: 3px 8px;
+	background: var(--mood-fg);
+	color: var(--paper);
+	/* Period bevel: a light top edge and a dark bottom edge, as on 2004 title bars. */
+	border-top: 1px solid color-mix(in oklab, var(--mood-fg) 55%, var(--paper));
+	border-bottom: 1px solid color-mix(in oklab, var(--mood-fg) 70%, black);
+	font: bold 15px/1.35 "Trebuchet MS", "Lucida Grande", sans-serif;
+}
+
+.blk-inner {
+	padding: 10px 10px 11px;
+}
+
+.blk-mood-label {
+	margin: 0;
+	font: bold 19px/1.25 "Trebuchet MS", "Lucida Grande", sans-serif;
+	color: var(--mood-fg);
+}
+
+.blk-mood-note {
+	margin: 4px 0 0;
+	white-space: pre-line;
+	overflow-wrap: anywhere;
+}
+
+.blk-mood-empty,
+.blk-guestbook-empty {
+	margin: 0;
+	color: var(--ink-soft);
 }
 
 .blk-guestbook ul {
-	margin: 0 0 1rem;
-	padding: 0;
 	list-style: none;
+	margin: 0;
+	padding: 0;
 }
 
 .blk-guestbook li {
-	margin-bottom: 1rem;
+	padding: 9px 10px;
+}
+
+.blk-guestbook li + li {
+	border-top: 1px dotted var(--rule);
+}
+
+.blk-guestbook-meta {
+	margin: 0;
+	font-size: 12px;
+	color: var(--ink-soft);
+}
+
+.blk-guestbook-meta a {
+	font-weight: bold;
 }
 
 /* Entry bodies are plain text; pre-line shows their line breaks without any
  * markup in the page. */
 .blk-guestbook-body {
-	margin: 0.25rem 0 0;
+	margin: 3px 0 0;
 	white-space: pre-line;
+	overflow-wrap: anywhere;
 }
 
-.blk-guestbook-empty {
-	opacity: 0.6;
-	font-style: italic;
+.blk-sign {
+	display: block;
+	padding: 9px 10px;
+	background: var(--tint);
+	border-top: 1px solid var(--rule);
+	font-weight: bold;
+}
+
+.blk-random {
+	margin: 4px 12px 14px;
+	text-align: right;
+}
+
+@media (min-width: 720px) {
+	.blk-sheet {
+		max-width: 560px;
+	}
+
+	.blk-name {
+		font-size: clamp(34px, 10vw, 64px);
+	}
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	a {
+		transition: color 0.15s ease-out;
+	}
 }
