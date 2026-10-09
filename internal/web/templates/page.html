@@ -2,10 +2,10 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<title>{{.Handle}}</title>
+<title>{{.Name}}</title>
 <link rel="stylesheet" href="/theme.css">
 <meta property="og:type" content="website">
-<meta property="og:title" content="{{.Handle}}">
+<meta property="og:title" content="{{.Name}}">
 <meta property="og:description" content="{{.OGDescription}}">
 <meta property="og:url" content="{{.OGURL}}">
 <meta property="og:image" content="{{.OGImageURL}}">
@@ -17,7 +17,7 @@
 <main class="blk-sheet">
 <header class="blk-identity">
 <div class="blk-frame" aria-hidden="true">{{.Initial}}</div>
-<div><h1 class="blk-name">{{.Handle}}</h1><p class="blk-address">{{.Address}}</p></div>
+<div><h1 class="blk-name">{{.Name}}</h1><p class="blk-address">{{.Address}}</p></div>
 </header>
 <section class="blk-box blk-mood" aria-labelledby="blk-mood-title">
 <h2 class="blk-bar" id="blk-mood-title">cómo estoy</h2>
@@ -39,7 +39,7 @@
 {{else}}
 <div class="blk-inner"><p class="blk-guestbook-empty">Todavía nadie firmó.</p></div>
 {{end}}
-<a class="blk-sign" href="{{.SignURL}}">Firmá el libro de {{.Handle}}</a>
+<a class="blk-sign" href="{{.SignURL}}">Firmá el libro de {{.Name}}</a>
 </section>
 <p class="blk-random"><a href="{{.RandomURL}}">Otra página al azar</a></p>
 </main>

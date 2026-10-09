@@ -28,9 +28,10 @@ const (
 	padding = 80
 
 	handleSize = 64
-	// handleMinSize is the floor fitSize shrinks the handle to. A handle at
-	// user.ValidHandle's 30-character limit, all wide glyphs, still fits
-	// comfortably at this size — see internal/ogcard/render_test.go.
+	// handleMinSize is the floor fitSize shrinks the title line to. A display
+	// name at its 40-rune limit, all wide glyphs, still fits at this size, as
+	// does a handle at user.ValidHandle's 30-character limit — see
+	// internal/ogcard/render_test.go.
 	handleMinSize = 28
 	handleStep    = 4
 
@@ -89,6 +90,9 @@ func init() {
 type Card struct {
 	Handle string
 
+	// Name is the owner's display name, drawn in place of Handle when set.
+	Name string
+
 	// MoodClass keys the Palette lookup. It is "none" for the no-mood-yet
 	// state, or one of mood.AllKeys()'s string values otherwise — the
 	// caller is responsible for that, the same way pageData.MoodClass is in
@@ -133,11 +137,16 @@ func drawCard(img *image.RGBA, c Card, colors Colors) error {
 	maxWidth := fixed.I(Width - 2*padding)
 
 	// The handle is one line, never wrapped — unlike the note it is an
-	// identity, not prose, so wrapping it would look broken. handleMaxLen
-	// (30, see user.ValidHandle) times handleSize bold could still overflow
-	// maxWidth for a handle made entirely of wide characters, so it shrinks
-	// to fit instead of wrapping or being clipped.
-	handleFitSize, err := fitSize(boldFont, c.Handle, handleSize, handleMinSize, maxWidth)
+	// identity, not prose, so wrapping it would look broken. The title is
+	// the display name when set (up to 40 runes, see user.NormaliseDisplayName)
+	// else the handle (30 characters, see user.ValidHandle). Either times
+	// handleSize bold can overflow maxWidth, so it shrinks to fit instead of
+	// wrapping or being clipped.
+	title := c.Handle
+	if c.Name != "" {
+		title = c.Name
+	}
+	handleFitSize, err := fitSize(boldFont, title, handleSize, handleMinSize, maxWidth)
 	if err != nil {
 		return err
 	}
@@ -162,7 +171,7 @@ func drawCard(img *image.RGBA, c Card, colors Colors) error {
 	src := image.NewUniform(colors.Foreground)
 
 	y := padding + handleSize
-	drawLine(img, handleFace, src, c.Handle, padding, y)
+	drawLine(img, handleFace, src, title, padding, y)
 	y += lineHeight(labelSize)
 
 	if c.MoodLabel == "" && c.MoodNote == "" {

@@ -175,6 +175,41 @@ func TestRender_LongHandleNeverPanicsOrOverflows(t *testing.T) {
 	}
 }
 
+// TestRender_LongNameFits covers the widest display name user.NormaliseDisplayName
+// allows (40 runes), all of a wide glyph, and checks the card stays
+// deterministic and differs from the handle-only card.
+func TestRender_LongNameFits(t *testing.T) {
+	t.Parallel()
+
+	palette := testPalette(t)
+	for _, name := range []string{strings.Repeat("W", 40), strings.Repeat("一", 40)} {
+		card := ogcard.Card{Handle: "ana", Name: name, MoodClass: "feliz", MoodLabel: "feliz", MoodNote: "nota"}
+		first, err := ogcard.Render(card, palette)
+		if err != nil {
+			t.Fatalf("Render(name=%q) error = %v", name, err)
+		}
+		second, err := ogcard.Render(card, palette)
+		if err != nil {
+			t.Fatalf("Render(name=%q) second call error = %v", name, err)
+		}
+		if !bytes.Equal(first, second) {
+			t.Errorf("Render(name=%q) is not deterministic", name)
+		}
+		if b := decode(t, first).Bounds(); b.Dx() != ogcard.Width || b.Dy() != ogcard.Height {
+			t.Errorf("Render(name=%q) dimensions = %dx%d, want %dx%d", name, b.Dx(), b.Dy(), ogcard.Width, ogcard.Height)
+		}
+
+		card.Name = ""
+		handleOnly, err := ogcard.Render(card, palette)
+		if err != nil {
+			t.Fatalf("Render(handle only) error = %v", err)
+		}
+		if bytes.Equal(first, handleOnly) {
+			t.Errorf("Render(name=%q) matches the handle-only card, want the name drawn", name)
+		}
+	}
+}
+
 // FuzzRender backstops the table test above with real fuzzing over the note
 // text — `go test -fuzz=FuzzRender ./internal/ogcard` seeds new corpus
 // entries under testdata/fuzz on any failure. Handle and mood label are held

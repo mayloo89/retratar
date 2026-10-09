@@ -23,8 +23,12 @@ import (
 // html/template's own auto-escaping.
 type pageData struct {
 	Handle string
-	// Initial is the handle's first rune, upper-cased, for the framed
-	// initial in the identity header. Display-only.
+	// Name is how the page identifies its owner: the display name if set,
+	// otherwise the handle. User text, rendered only through html/template's
+	// escaping.
+	Name string
+	// Initial is Name's first rune, upper-cased, for the framed initial in
+	// the identity header. Display-only.
 	Initial string
 	// Address is the page's canonical host, without scheme, as shown under
 	// the name.
@@ -95,7 +99,8 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 	base := s.Config.PageBaseURL(u.Handle)
 	data := pageData{
 		Handle:        u.Handle,
-		Initial:       initialOf(u.Handle),
+		Name:          u.ShownName(),
+		Initial:       initialOf(u.ShownName()),
 		Address:       s.Config.PageHostFor(u.Handle),
 		MoodClass:     "none",
 		OGURL:         base + "/",
@@ -150,7 +155,7 @@ func (s *Server) handleTheme(w http.ResponseWriter, _ *http.Request) {
 }
 
 // initialOf returns the first rune of s, upper-cased. A rune, not a byte, so
-// it stays right if handles ever stop being ASCII.
+// it stays right for display names, which are not ASCII.
 func initialOf(s string) string {
 	for _, r := range s {
 		return string(unicode.ToUpper(r))
