@@ -1,16 +1,16 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
 <head>
 <meta charset="utf-8">
-<title>Choose your handle</title>
+<title>Elegí tu dirección</title>
 </head>
 <body>
-<h1>Choose your handle</h1>
-<p>This becomes your page's address: https://&lt;handle&gt;.retrat.ar — lowercase letters, numbers and hyphens only.</p>
+<h1>Elegí tu dirección</h1>
+<p>Va a ser la dirección de tu página: https://&lt;nombre&gt;.retrat.ar. Usá minúsculas, números y guiones.</p>
 <form method="post" action="/handle">
-<label for="handle">Handle</label>
+<label for="handle">Tu dirección</label>
 <input type="text" id="handle" name="handle" required>
-<button type="submit">Claim it</button>
+<button type="submit">Quiero esta</button>
 </form>
 {{with .Error}}<p role="alert">{{.}}</p>{{end}}
 </body>

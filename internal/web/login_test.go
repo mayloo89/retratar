@@ -154,7 +154,7 @@ func TestLoginFlow_SignsInAndAuthenticatesFollowingRequests(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read body: %v", err)
 	}
-	if !strings.Contains(string(body), "Choose your handle") {
+	if !strings.Contains(string(body), "Elegí tu dirección") {
 		t.Errorf("home body = %q, want the claim-handle form for an account with no handle yet", body)
 	}
 }

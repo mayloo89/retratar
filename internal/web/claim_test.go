@@ -21,7 +21,7 @@ func TestClaimHandleFlow_ShowsFormThenClaims(t *testing.T) {
 		t.Fatalf("GET /handle status = %d, want 200", form.StatusCode)
 	}
 	body, _ := io.ReadAll(form.Body)
-	if !strings.Contains(string(body), "Choose your handle") {
+	if !strings.Contains(string(body), "Elegí tu dirección") {
 		t.Fatalf("GET /handle body = %q, want the claim form", body)
 	}
 
@@ -57,7 +57,7 @@ func TestClaimHandleSubmit_RejectsInvalidShape(t *testing.T) {
 		t.Fatalf("status = %d, want 422", resp.StatusCode)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	if !strings.Contains(string(body), "lowercase") {
+	if !strings.Contains(string(body), "minúsculas") {
 		t.Errorf("body = %q, want it to explain the shape rule", body)
 	}
 }

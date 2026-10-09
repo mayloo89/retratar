@@ -43,7 +43,7 @@ func (s *Server) handleLoginRequest(w http.ResponseWriter, r *http.Request) {
 	address, err := user.NormaliseEmail(r.FormValue("email"))
 	if err != nil {
 		s.renderTemplate(w, http.StatusUnprocessableEntity, "login_form.html",
-			loginFormData{Error: "Enter a valid email address."})
+			loginFormData{Error: "Escribí un email válido."})
 		return
 	}
 
@@ -67,8 +67,8 @@ func (s *Server) handleLoginRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	link := s.Config.BaseURL() + "/login/" + raw
-	body := "Click to sign in to retratar: " + link + "\n\nThis link expires in 15 minutes."
-	if err := s.Mailer.Send(r.Context(), address, "Sign in to retratar", body); err != nil {
+	body := "Entrá a retratar con este link:\n" + link + "\n\nVence en 15 minutos. Si no lo pediste, ignorá este mail."
+	if err := s.Mailer.Send(r.Context(), address, "Tu link para entrar a retratar", body); err != nil {
 		s.Logger.ErrorContext(r.Context(), "send login mail", slog.String("error", err.Error()))
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
