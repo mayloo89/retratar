@@ -19,6 +19,8 @@ type moodOption struct {
 // appHomeData is what app_home.html renders.
 type appHomeData struct {
 	Handle      string
+	DisplayName string
+	NameError   string
 	PageURL     string
 	HasMood     bool
 	MoodLabel   string
@@ -64,7 +66,14 @@ func (s *Server) handleAppHome(w http.ResponseWriter, r *http.Request) {
 // uses this with a non-200 status to redisplay the form after a rejected
 // submission, the same shape handleLoginRequest uses for login_form.html.
 func (s *Server) renderAppHome(w http.ResponseWriter, r *http.Request, status int, u user.User, errMsg string) {
-	data := appHomeData{Handle: u.Handle, Error: errMsg}
+	s.renderAppHomeErrors(w, r, status, u, errMsg, "")
+}
+
+// renderAppHomeErrors is [Server.renderAppHome] with a second message, shown
+// next to the name form instead of the mood form. [handleNameSubmit] passes
+// u with the rejected text in DisplayName so the field keeps what was typed.
+func (s *Server) renderAppHomeErrors(w http.ResponseWriter, r *http.Request, status int, u user.User, errMsg, nameErr string) {
+	data := appHomeData{Handle: u.Handle, DisplayName: u.DisplayName, NameError: nameErr, Error: errMsg}
 	// An account without a handle has no page yet; POST /mood can still
 	// re-render this dashboard for one, so leave PageURL empty for it.
 	if u.Handle != "" {

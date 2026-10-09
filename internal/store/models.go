@@ -52,11 +52,12 @@ type Session struct {
 }
 
 type User struct {
-	ID        uuid.UUID
-	Email     string
-	Handle    *string
-	State     string
-	Tier      string
-	Locale    string
-	CreatedAt pgtype.Timestamptz
+	ID          uuid.UUID
+	Email       string
+	Handle      *string
+	State       string
+	Tier        string
+	Locale      string
+	CreatedAt   pgtype.Timestamptz
+	DisplayName *string
 }

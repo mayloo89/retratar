@@ -16,7 +16,7 @@ const claimHandle = `-- name: ClaimHandle :one
 UPDATE users
 SET handle = $1, state = 'active'
 WHERE id = $2 AND handle IS NULL
-RETURNING id, email, handle, state, tier, locale, created_at
+RETURNING id, email, handle, state, tier, locale, created_at, display_name
 `
 
 type ClaimHandleParams struct {
@@ -40,12 +40,13 @@ func (q *Queries) ClaimHandle(ctx context.Context, arg ClaimHandleParams) (User,
 		&i.Tier,
 		&i.Locale,
 		&i.CreatedAt,
+		&i.DisplayName,
 	)
 	return i, err
 }
 
 const getUserByHandle = `-- name: GetUserByHandle :one
-SELECT id, email, handle, state, tier, locale, created_at FROM users WHERE lower(handle) = lower($1)
+SELECT id, email, handle, state, tier, locale, created_at, display_name FROM users WHERE lower(handle) = lower($1)
 `
 
 func (q *Queries) GetUserByHandle(ctx context.Context, handle string) (User, error) {
@@ -59,12 +60,13 @@ func (q *Queries) GetUserByHandle(ctx context.Context, handle string) (User, err
 		&i.Tier,
 		&i.Locale,
 		&i.CreatedAt,
+		&i.DisplayName,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, handle, state, tier, locale, created_at FROM users WHERE id = $1
+SELECT id, email, handle, state, tier, locale, created_at, display_name FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
@@ -78,6 +80,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.Tier,
 		&i.Locale,
 		&i.CreatedAt,
+		&i.DisplayName,
 	)
 	return i, err
 }
@@ -100,11 +103,40 @@ func (q *Queries) RandomActiveHandle(ctx context.Context, excludeID pgtype.UUID)
 	return handle, err
 }
 
+const setDisplayName = `-- name: SetDisplayName :one
+UPDATE users
+SET display_name = $1
+WHERE id = $2
+RETURNING id, email, handle, state, tier, locale, created_at, display_name
+`
+
+type SetDisplayNameParams struct {
+	DisplayName *string
+	ID          uuid.UUID
+}
+
+// A NULL display_name clears the name. The page falls back to the handle.
+func (q *Queries) SetDisplayName(ctx context.Context, arg SetDisplayNameParams) (User, error) {
+	row := q.db.QueryRow(ctx, setDisplayName, arg.DisplayName, arg.ID)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Handle,
+		&i.State,
+		&i.Tier,
+		&i.Locale,
+		&i.CreatedAt,
+		&i.DisplayName,
+	)
+	return i, err
+}
+
 const upsertUserByEmail = `-- name: UpsertUserByEmail :one
 INSERT INTO users (email)
 VALUES ($1)
 ON CONFLICT (lower(email)) DO UPDATE SET email = users.email
-RETURNING id, email, handle, state, tier, locale, created_at
+RETURNING id, email, handle, state, tier, locale, created_at, display_name
 `
 
 // Returns the account for an email, creating it on first use. Login is a signup
@@ -125,6 +157,7 @@ func (q *Queries) UpsertUserByEmail(ctx context.Context, email string) (User, er
 		&i.Tier,
 		&i.Locale,
 		&i.CreatedAt,
+		&i.DisplayName,
 	)
 	return i, err
 }

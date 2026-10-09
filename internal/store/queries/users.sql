@@ -40,3 +40,11 @@ SELECT handle FROM users
 WHERE state = 'active' AND handle IS NOT NULL
   AND (sqlc.narg(exclude_id)::uuid IS NULL OR id <> sqlc.narg(exclude_id)::uuid)
 ORDER BY random() LIMIT 1;
+
+-- name: SetDisplayName :one
+--
+-- A NULL display_name clears the name. The page falls back to the handle.
+UPDATE users
+SET display_name = sqlc.narg(display_name)
+WHERE id = @id
+RETURNING *;
