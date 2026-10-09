@@ -14,7 +14,7 @@ concurrency:
 
 env:
   # Pinned: a golangci-lint release must not fail an unrelated pull request.
-  LINT_VERSION: "v2.13.2"
+  LINT_VERSION: "v2.14.0"
 
 jobs:
   build:
