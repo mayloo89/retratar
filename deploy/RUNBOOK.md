@@ -47,7 +47,7 @@ Never `systemctl reload` without `nginx -t &&` in front of it.
 **2. App.**
 
     docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env \
-      build app
+      build --pull app
     docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env \
       run --rm app -migrate
     docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env \
@@ -55,7 +55,8 @@ Never `systemctl reload` without `nginx -t &&` in front of it.
 
 Build first: `run` reuses whatever image already exists, so migrating before
 building applies the previous release's migrations and the new app then starts
-against an old schema.
+against an old schema. `--pull` refreshes the Go base image, so a cached older
+toolchain can't build the release.
 
 **3. Verify the rate limiter is actually live.** Check it rather than
 assuming:
