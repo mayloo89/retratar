@@ -190,3 +190,22 @@ func TestDashboard_HiddenEntryTag(t *testing.T) {
 		}
 	}
 }
+
+// TestDashboard_LongHandleEntry only proves the markup path for a handle at
+// the 30-character limit; the layout fix (a shrinkable grid track) is CSS and
+// cannot be asserted from Go.
+func TestDashboard_LongHandleEntry(t *testing.T) {
+	srv, _ := newLoginServer(t)
+	h := srv.Handler()
+	aCookie, a := guestbookAccount(t, srv, "a@example.com", "a")
+	long := strings.Repeat("x", 30)
+	_, b := guestbookAccount(t, srv, "b@example.com", long)
+	if _, err := srv.Guestbook.Sign(t.Context(), a.ID, b.ID, "hola"); err != nil {
+		t.Fatalf("Sign() error = %v", err)
+	}
+
+	body := bodyOf(t, h, http.MethodGet, "/", nil, aCookie)
+	if !strings.Contains(body, ">"+long+"</a>") {
+		t.Errorf("dashboard = %q, want the 30-character handle rendered in full", body)
+	}
+}

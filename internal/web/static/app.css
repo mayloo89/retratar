@@ -42,7 +42,9 @@ body {
 }
 a { color: var(--mood-fg); text-underline-offset: .15em; }
 
-.top { max-width: 30rem; margin: 0 auto; padding: 14px 2px 10px;
+/* min-height is the bar's height with the 32px "Salir" button, so it does not
+   change between screens. */
+.top { max-width: 30rem; margin: 0 auto; padding: 14px 2px 10px; min-height: 56px;
   display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .mark { font: bold 17px/1 "Trebuchet MS", "Lucida Grande", sans-serif;
   color: var(--mood-fg); text-decoration: none; letter-spacing: -.01em; }
@@ -60,7 +62,7 @@ a { color: var(--mood-fg); text-underline-offset: .15em; }
 .muted { color: var(--ink-soft); }
 .pageurl { font-size: 13px; overflow-wrap: anywhere; }
 .body.flush { padding-bottom: 0; }
-.back { margin-top: 14px; }
+.body > p.back { margin-top: 14px; }
 
 /* Boxes with title bars: the page's grammar, used for dashboard sections. */
 .box { margin: 14px 12px; border: 1px solid var(--rule); }
@@ -118,9 +120,9 @@ fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
 
 /* Guestbook moderation list. */
 ul.entries { list-style: none; margin: 0; padding: 0; }
-.entries li { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 10px; align-items: start; }
+.entries li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; padding: 10px; align-items: start; }
 .entries li + li { border-top: 1px dotted var(--rule); }
-.entries .meta { margin: 0; font-size: 12px; color: var(--ink-soft); }
+.entries .meta { margin: 0; font-size: 12px; color: var(--ink-soft); overflow-wrap: anywhere; }
 .entries .meta a { font-weight: bold; }
 .entries .text { margin: 2px 0 0; white-space: pre-line; overflow-wrap: anywhere; grid-column: 1; }
 .entries form { grid-column: 2; grid-row: 1 / span 2; }
