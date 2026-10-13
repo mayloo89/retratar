@@ -154,6 +154,16 @@ func (s *Server) handleTheme(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write(themeCSS)
 }
 
+// handleAppCSS serves the stylesheet every app-surface screen loads. It is
+// handleTheme's twin for the app host.
+func (s *Server) handleAppCSS(w http.ResponseWriter, _ *http.Request) {
+	// PrivateCache has already set no-store; this Set overrides it, on purpose:
+	// the stylesheet is the same for everyone and safe to cache.
+	w.Header().Set("Content-Type", "text/css; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	_, _ = w.Write(appCSS)
+}
+
 // initialOf returns the first rune of s, upper-cased. A rune, not a byte, so
 // it stays right for display names, which are not ASCII.
 func initialOf(s string) string {
