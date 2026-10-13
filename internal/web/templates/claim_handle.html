@@ -2,16 +2,24 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Elegí tu dirección</title>
+<link rel="stylesheet" href="/app.css">
 </head>
 <body>
+<header class="top"><a class="mark" href="/">retratar</a>
+<form method="post" action="/logout"><button class="quiet" type="submit">Salir</button></form></header>
+<main class="sheet">
 <h1>Elegí tu dirección</h1>
+<div class="body">
 <p>Va a ser la dirección de tu página: https://&lt;nombre&gt;.retrat.ar. Usá minúsculas, números y guiones.</p>
 <form method="post" action="/handle">
-<label for="handle">Tu dirección</label>
-<input type="text" id="handle" name="handle" required>
-<button type="submit">Quiero esta</button>
+<div class="field"><label for="handle">Tu dirección</label>
+<input type="text" id="handle" name="handle" required></div>
+<div class="actions"><button type="submit">Quiero esta</button></div>
 </form>
 {{with .Error}}<p role="alert">{{.}}</p>{{end}}
+</div>
+</main>
 </body>
 </html>

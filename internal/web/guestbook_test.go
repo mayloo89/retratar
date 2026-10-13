@@ -416,14 +416,14 @@ func TestDashboard_ListsOwnEntriesWithHideButtons(t *testing.T) {
 		"entrada oculta",
 		`action="/guestbook/entries/` + hidden.ID.String() + `/show"`,
 		"Mostrar",
-		"(oculto)",
+		`<span class="tag">oculto</span>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("dashboard = %q, want it to contain %q", body, want)
 		}
 	}
-	if n := strings.Count(body, "(oculto)"); n != 1 {
-		t.Errorf("dashboard has %d (oculto) labels, want 1", n)
+	if n := strings.Count(body, `<span class="tag">oculto</span>`); n != 1 {
+		t.Errorf("dashboard has %d oculto tags, want 1", n)
 	}
 }
 

@@ -2,21 +2,28 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Libro de {{.Handle}}</title>
+<link rel="stylesheet" href="/app.css">
 </head>
-<body>
+<body{{with .MoodClass}} class="mood-{{.}}"{{end}}>
+<header class="top"><a class="mark" href="/">retratar</a></header>
+<main class="sheet">
 <h1>Libro de {{.Handle}}</h1>
+<div class="body">
 {{if .CanSign}}
 <form method="post" action="/sign/{{.Handle}}">
-<label for="body">Tu mensaje</label>
-<textarea id="body" name="body" maxlength="280" rows="5" required>{{.Body}}</textarea>
-<button type="submit">Firmar</button>
+<div class="field"><label for="body">Tu mensaje</label>
+<textarea id="body" name="body" maxlength="280" rows="5" required>{{.Body}}</textarea></div>
+<div class="actions"><button type="submit">Firmar</button></div>
 </form>
 {{with .Error}}<p role="alert">{{.}}</p>{{end}}
-<p><a href="{{.PageURL}}">Volver a la página de {{.Handle}}</a></p>
+<p class="back"><a href="{{.PageURL}}">Volver a la página de {{.Handle}}</a></p>
 {{else}}
 <p>{{.Message}}</p>
 <p><a href="{{.MessageURL}}">{{.MessageLink}}</a></p>
 {{end}}
+</div>
+</main>
 </body>
 </html>

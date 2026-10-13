@@ -2,16 +2,23 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ingresar</title>
+<link rel="stylesheet" href="/app.css">
 </head>
 <body>
+<header class="top"><a class="mark" href="/">retratar</a></header>
+<main class="sheet">
 <h1>Ingresar</h1>
+<div class="body">
 <p>Te mandamos un link para entrar. No hace falta contraseña.</p>
 <form method="post" action="/login">
-<label for="email">Tu email</label>
-<input type="email" id="email" name="email" required>
-<button type="submit">Mandame el link</button>
+<div class="field"><label for="email">Tu email</label>
+<input type="email" id="email" name="email" required></div>
+<div class="actions"><button type="submit">Mandame el link</button></div>
 </form>
 {{with .Error}}<p role="alert">{{.}}</p>{{end}}
+</div>
+</main>
 </body>
 </html>
