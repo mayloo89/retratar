@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/mayloo89/retratar/internal/guestbook"
+	"github.com/mayloo89/retratar/internal/mood"
 	"github.com/mayloo89/retratar/internal/user"
 )
 
@@ -17,6 +18,11 @@ import (
 type guestbookSignData struct {
 	Handle  string
 	PageURL string
+
+	// MoodClass is the page owner's current mood key, or empty when they have
+	// none or the owner was not resolved. Always a mood.Key, never request
+	// input.
+	MoodClass string
 
 	// Message and its link explain why the visitor has no form. CanSign is
 	// true only when the visitor may write, and then Body and Error carry a
@@ -53,6 +59,15 @@ func (s *Server) guestbookState(r *http.Request, owner user.User) (data guestboo
 	data = guestbookSignData{
 		Handle:  owner.Handle,
 		PageURL: s.Config.PageBaseURL(owner.Handle) + "/",
+	}
+	// The sign page wears the page owner's mood, so the signer still feels
+	// they are on their friend's page. A failed lookup only costs the tint.
+	switch m, err := s.Moods.CurrentMood(r.Context(), owner.ID); {
+	case err == nil:
+		data.MoodClass = string(m.Key)
+	case errors.Is(err, mood.ErrNoMood):
+	default:
+		s.Logger.ErrorContext(r.Context(), "get owner mood", slog.String("error", err.Error()))
 	}
 	signer, signedIn := UserFrom(r.Context())
 	switch {

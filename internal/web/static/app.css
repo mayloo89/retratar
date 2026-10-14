@@ -1,0 +1,134 @@
+/* The app surface: the back of the notebook. Same paper, ink and fonts as pages, quieter. */
+:root {
+  --paper: oklch(0.995 0.004 90);
+  --ink: oklch(0.27 0.012 90);
+  --ink-soft: oklch(0.42 0.012 90);
+  --line: oklch(0.58 0.012 90);          /* form-control borders: 3:1 on paper */
+  --danger: oklch(0.46 0.16 28);
+  --danger-bg: oklch(0.96 0.025 28);
+  /* Before there is a mood: a warm notebook brown, not the grey of .mood-none. */
+  --mood-bg: oklch(0.93 0.03 75);
+  --mood-fg: oklch(0.36 0.06 55);
+}
+
+/* The same 13 mood rules as theme.css, copied byte-for-byte; a test keeps them
+ * in sync. */
+.mood-feliz      { --mood-bg: #fff4cc; --mood-fg: #5c4a00; }
+.mood-triste     { --mood-bg: #dbe6f2; --mood-fg: #22344a; }
+.mood-tranquilo  { --mood-bg: #dff2ea; --mood-fg: #1f4a3a; }
+.mood-ansioso    { --mood-bg: #fde3d0; --mood-fg: #5c2e00; }
+.mood-enamorado  { --mood-bg: #fbdce6; --mood-fg: #5c1f34; }
+.mood-cansado    { --mood-bg: #e6e2f2; --mood-fg: #382f5c; }
+.mood-enojado    { --mood-bg: #f6d3d3; --mood-fg: #5c1a1a; }
+.mood-aburrido   { --mood-bg: #ececec; --mood-fg: #3a3a3a; }
+.mood-inspirado  { --mood-bg: #d9f2d0; --mood-fg: #23491a; }
+.mood-nostalgico { --mood-bg: #f0e0cc; --mood-fg: #4a3620; }
+.mood-fiesta     { --mood-bg: #f2d0f2; --mood-fg: #4a1a4a; }
+.mood-perdido    { --mood-bg: #d6d6d6; --mood-fg: #2b2b2b; }
+.mood-none       { --mood-bg: #f4f4f4; --mood-fg: #222; }
+
+*, *::before, *::after { box-sizing: border-box; }
+
+/* The back of the notebook: same paper, ink and fonts as a page, but
+   quieter. No stripes, no framed initial; a tinted desk and one sheet. */
+body {
+  --rule: color-mix(in oklab, var(--mood-fg) 35%, var(--paper));
+  --tint: color-mix(in oklab, var(--mood-bg) 60%, var(--paper));
+  margin: 0;
+  padding: 0 10px 32px;
+  color: var(--ink);
+  background: var(--tint);
+  font: 15px/1.5 Verdana, Geneva, "DejaVu Sans", sans-serif;
+}
+a { color: var(--mood-fg); text-underline-offset: .15em; }
+
+/* min-height is the bar's height with the 32px "Salir" button, so it does not
+   change between screens. */
+.top { max-width: 30rem; margin: 0 auto; padding: 14px 2px 10px; min-height: 56px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mark { font: bold 17px/1 "Trebuchet MS", "Lucida Grande", sans-serif;
+  color: var(--mood-fg); text-decoration: none; letter-spacing: -.01em; }
+.top form { margin: 0; }
+
+.sheet { max-width: 30rem; margin: 0 auto; background: var(--paper);
+  border: 1px solid var(--mood-fg); }
+.sheet > h1 { margin: 0; padding: 18px 16px 14px; border-bottom: 1px solid var(--rule);
+  font: bold 24px/1.15 "Trebuchet MS", "Lucida Grande", sans-serif; color: var(--mood-fg);
+  overflow-wrap: anywhere; }
+.body { padding: 14px 16px 18px; }
+.body > p, .inner > p { margin: 0 0 10px; max-width: 60ch; }
+.body > p:last-child, .inner > p:last-child { margin-bottom: 0; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.muted { color: var(--ink-soft); }
+.pageurl { font-size: 13px; overflow-wrap: anywhere; }
+.body.flush { padding-bottom: 0; }
+.body > p.back { margin-top: 14px; }
+
+/* Boxes with title bars: the page's grammar, used for dashboard sections. */
+.box { margin: 14px 12px; border: 1px solid var(--rule); }
+.bar { margin: 0; padding: 3px 8px; background: var(--mood-fg); color: var(--paper);
+  border-top: 1px solid color-mix(in oklab, var(--mood-fg) 55%, var(--paper));
+  border-bottom: 1px solid color-mix(in oklab, var(--mood-fg) 70%, black);
+  font: bold 15px/1.35 "Trebuchet MS", "Lucida Grande", sans-serif; }
+.inner { padding: 12px 10px 14px; }
+.sheet > .box:last-child { margin-bottom: 16px; }
+
+/* Forms: native controls, 16px text so phones don't zoom. */
+form { margin: 0; }
+label, legend { display: block; margin: 0 0 4px; font-weight: bold; font-size: 13px; }
+.field + .field, fieldset + .field { margin-top: 12px; }
+input[type="text"], input[type="email"], textarea {
+  display: block; width: 100%; padding: 8px 10px; margin: 0;
+  font: 16px/1.4 Verdana, Geneva, "DejaVu Sans", sans-serif; color: var(--ink);
+  background: var(--paper); border: 1px solid var(--line); border-radius: 0; }
+textarea { resize: vertical; min-height: 7.5em; }
+.help { margin: 4px 0 0; font-size: 13px; color: var(--ink-soft); }
+.actions { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+
+button {
+  min-height: 44px; padding: 8px 18px; cursor: pointer;
+  font: bold 15px/1.2 "Trebuchet MS", "Lucida Grande", sans-serif;
+  color: var(--paper); background: var(--mood-fg); border-radius: 0;
+  border: 1px solid color-mix(in oklab, var(--mood-fg) 70%, black);
+  border-top-color: color-mix(in oklab, var(--mood-fg) 55%, var(--paper)); }
+button:hover { background: color-mix(in oklab, var(--mood-fg) 85%, black); }
+button:active { transform: translateY(1px); }
+/* Secondary: small actions inside lists and the top bar. */
+button.quiet { min-height: 32px; padding: 4px 10px; font-size: 13px;
+  color: var(--mood-fg); background: var(--paper); border: 1px solid var(--rule); }
+button.quiet:hover { background: var(--tint); }
+
+:focus-visible { outline: 2px dashed var(--mood-fg); outline-offset: 3px; }
+input:focus-visible, textarea:focus-visible { outline-offset: 1px; border-color: var(--mood-fg); }
+
+[role="alert"] { margin: 12px 0 0; padding: 8px 10px; font-size: 14px;
+  color: var(--danger); background: var(--danger-bg); border: 1px solid var(--danger); }
+
+/* Mood picker: twelve radios, each wearing its own mood. */
+fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+.moods { display: grid; grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr)); gap: 6px; }
+.moods label { display: flex; align-items: center; gap: 8px; margin: 0; padding: 7px 8px;
+  font-weight: normal; font-size: 14px; cursor: pointer;
+  color: var(--mood-fg); background: var(--mood-bg); border: 1px solid transparent; }
+.moods input { margin: 0; accent-color: var(--mood-fg); width: 16px; height: 16px; }
+.moods label:has(:checked) { border-color: var(--mood-fg); font-weight: bold; }
+.moods label:has(:focus-visible) { outline: 2px dashed var(--mood-fg); outline-offset: 2px; }
+.moods input:focus-visible { outline: none; }
+
+.now { margin: 0 0 12px; }
+.now strong { font: bold 19px/1.25 "Trebuchet MS", "Lucida Grande", sans-serif; color: var(--mood-fg); }
+
+/* Guestbook moderation list. */
+ul.entries { list-style: none; margin: 0; padding: 0; }
+.entries li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; padding: 10px; align-items: start; }
+.entries li + li { border-top: 1px dotted var(--rule); }
+.entries .meta { margin: 0; font-size: 12px; color: var(--ink-soft); overflow-wrap: anywhere; }
+.entries .meta a { font-weight: bold; }
+.entries .text { margin: 2px 0 0; white-space: pre-line; overflow-wrap: anywhere; grid-column: 1; }
+.entries form { grid-column: 2; grid-row: 1 / span 2; }
+.entries li.hidden .text { color: var(--ink-soft); text-decoration: line-through; text-decoration-color: var(--rule); }
+.tag { font-size: 11px; padding: 0 4px; border: 1px solid var(--rule); color: var(--ink-soft); }
+
+@media (prefers-reduced-motion: no-preference) {
+  a, button { transition: background-color .15s ease-out, color .15s ease-out; }
+}

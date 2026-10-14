@@ -115,6 +115,7 @@ func (s *Server) hostSplit(app, pages http.Handler) http.Handler {
 func (s *Server) appRoutes(writes, logins48 *rateLimiter) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealth)
+	mux.HandleFunc("GET /app.css", s.handleAppCSS)
 	mux.HandleFunc("GET /{$}", s.handleAppHome)
 	mux.HandleFunc("GET /login", s.handleLoginForm)
 	mux.Handle("POST /login", writes.rateLimit(logins48.rateLimit(http.HandlerFunc(s.handleLoginRequest))))

@@ -2,14 +2,21 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Confirmá que sos vos</title>
+<link rel="stylesheet" href="/app.css">
 </head>
 <body>
+<header class="top"><a class="mark" href="/">retratar</a></header>
+<main class="sheet">
 <h1>Confirmá que sos vos</h1>
+<div class="body">
 <p>Tocá el botón para terminar de entrar. Abrir este link todavía no te hizo entrar.</p>
 <form method="post" action="/login/{{.Token}}">
 <input type="hidden" name="nonce" value="{{.Nonce}}">
-<button type="submit">Entrar</button>
+<div class="actions"><button type="submit">Entrar</button></div>
 </form>
+</div>
+</main>
 </body>
 </html>

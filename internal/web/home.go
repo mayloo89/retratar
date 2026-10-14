@@ -18,6 +18,10 @@ type moodOption struct {
 
 // appHomeData is what app_home.html renders.
 type appHomeData struct {
+	// MoodClass is the owner's current mood key, or empty when none is set
+	// (no class, so the stylesheet's warm default applies). Always a
+	// mood.Key, never request input.
+	MoodClass   string
 	Handle      string
 	DisplayName string
 	NameError   string
@@ -84,6 +88,7 @@ func (s *Server) renderAppHomeErrors(w http.ResponseWriter, r *http.Request, sta
 	switch {
 	case err == nil:
 		data.HasMood = true
+		data.MoodClass = string(m.Key)
 		data.MoodLabel = m.Key.Label()
 		data.MoodNote = m.Note
 	case errors.Is(err, mood.ErrNoMood):
