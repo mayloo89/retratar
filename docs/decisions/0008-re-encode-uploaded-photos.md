@@ -21,8 +21,8 @@ Every photo is decoded and re-encoded as a JPEG of at most 1200px on its long
 side, with no metadata. The orientation is read first and applied to the
 pixels, so the result displays upright without the tag.
 
-Dimensions are checked from the header before any pixel is decoded, and only
-JPEG and PNG are accepted. The format is named explicitly rather than taken
+The dimensions and the estimated decoding memory are checked from the header
+before any pixel is decoded, and only JPEG and PNG are accepted. The format is named explicitly rather than taken
 from whatever decoders happen to be registered.
 
 Scaling uses `golang.org/x/image/draw`, which is already a dependency
