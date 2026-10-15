@@ -19,25 +19,36 @@ func orientation(data []byte) int {
 		return 1
 	}
 	pos := 2
-	for pos+4 <= len(data) {
+	for pos < len(data) {
 		if data[pos] != 0xFF {
 			return 1
 		}
-		marker := data[pos+1]
+		// A marker may be preceded by any number of 0xFF fill bytes.
+		for pos < len(data) && data[pos] == 0xFF {
+			pos++
+		}
+		if pos >= len(data) {
+			return 1
+		}
+		marker := data[pos]
+		pos++
 		if marker == 0xDA { // start of scan: no more metadata segments
 			return 1
 		}
-		// The length includes its own two bytes.
-		segLen := int(binary.BigEndian.Uint16(data[pos+2:]))
-		if segLen < 2 || pos+2+segLen > len(data) {
+		if pos+2 > len(data) {
 			return 1
 		}
-		payload := data[pos+4 : pos+2+segLen]
+		// The length includes its own two bytes.
+		segLen := int(binary.BigEndian.Uint16(data[pos:]))
+		if segLen < 2 || pos+segLen > len(data) {
+			return 1
+		}
+		payload := data[pos+2 : pos+segLen]
 		if marker == 0xE1 && len(payload) >= len(exifHeader) &&
 			string(payload[:len(exifHeader)]) == string(exifHeader) {
 			return tiffOrientation(payload[len(exifHeader):])
 		}
-		pos += 2 + segLen
+		pos += segLen
 	}
 	return 1
 }

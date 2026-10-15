@@ -1,7 +1,9 @@
 package photo
 
 import (
+	"bytes"
 	"encoding/binary"
+	"fmt"
 	"testing"
 )
 
@@ -14,6 +16,18 @@ func TestOrientation_Valid(t *testing.T) {
 				t.Errorf("%v orientation %d: got %d", order, want, got)
 			}
 		}
+	}
+}
+
+func TestOrientation_FillBytes(t *testing.T) {
+	seg := app1(exifPayload(binary.LittleEndian, 6, ""))
+	for _, fill := range []int{1, 3} {
+		t.Run(fmt.Sprintf("%d fill bytes", fill), func(t *testing.T) {
+			data := withSegment(jpegBytes(t, 8, 8, red), append(bytes.Repeat([]byte{0xFF}, fill), seg...))
+			if got := orientation(data); got != 6 {
+				t.Errorf("got %d, want 6", got)
+			}
+		})
 	}
 }
 
@@ -74,6 +88,9 @@ func TestOrientation_Malformed(t *testing.T) {
 }
 
 func FuzzOrientation(f *testing.F) {
+	seg := app1(exifPayload(binary.LittleEndian, 6, ""))
+	f.Add(withSegment(jpegBytes(f, 4, 4, red), append([]byte{0xFF}, seg...)))
+	f.Add(withSegment(jpegBytes(f, 4, 4, red), append([]byte{0xFF, 0xFF, 0xFF}, seg...)))
 	f.Add(withExif(jpegBytes(f, 4, 4, red), binary.LittleEndian, 6, ""))
 	f.Add(withExif(jpegBytes(f, 4, 4, red), binary.BigEndian, 8, "extra"))
 	for _, data := range malformedCases() {
