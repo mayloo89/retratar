@@ -25,7 +25,18 @@ const (
 	MaxPixels = 50_000_000 // width*height above this is rejected before decoding
 	MaxBytes  = 10 << 20   // largest accepted upload; task 17 also enforces it at the HTTP layer
 	Quality   = 82         // JPEG output quality
+
+	// MaxSide bounds either dimension. It keeps per-row decoder buffers and
+	// extreme aspect ratios in check; MaxPixels alone allows 50,000,000x1.
+	MaxSide = 8192
+	// MaxDecodeBytes is the budget for estimatedPeak: the memory one photo may
+	// take to decode and scale.
+	MaxDecodeBytes = 256 << 20
 )
+
+// scalerCellBytes is the size of one cell of the scaler's temporary buffer,
+// a [4]float64 (draw.kernel.Scale in golang.org/x/image/draw).
+const scalerCellBytes = 32
 
 // Errors Process returns; match them with errors.Is.
 var (
@@ -69,7 +80,12 @@ func Process(r io.Reader) (Result, error) {
 	if cfg.Width <= 0 || cfg.Height <= 0 {
 		return Result{}, fmt.Errorf("%w: zero-sized", ErrInvalidImage)
 	}
-	if int64(cfg.Width)*int64(cfg.Height) > MaxPixels {
+	// Pixel count alone does not bound memory: a 16-bit PNG needs eight bytes
+	// per pixel, the scaler needs more again, and a very wide image can pass
+	// the pixel limit with a huge row. Bound the sides and the estimate too.
+	if cfg.Width > MaxSide || cfg.Height > MaxSide ||
+		int64(cfg.Width)*int64(cfg.Height) > MaxPixels ||
+		estimatedPeak(cfg) > MaxDecodeBytes {
 		return Result{}, ErrTooLarge
 	}
 
@@ -95,15 +111,56 @@ func Process(r io.Reader) (Result, error) {
 	return Result{JPEG: buf.Bytes(), Width: b.Dx(), Height: b.Dy()}, nil
 }
 
-// scale fits src's long side to MaxEdge, keeping the aspect ratio. It never
-// upscales. The result is opaque: src is painted over the paper colour.
-func scale(src image.Image) *image.RGBA {
-	sb := src.Bounds()
-	w, h := sb.Dx(), sb.Dy()
+// scaledSize fits a w x h image's long side to MaxEdge, keeping the aspect
+// ratio. It never upscales. The arithmetic is int64 so it cannot overflow on
+// a 32-bit platform whatever the input.
+func scaledSize(w, h int64) (int64, int64) {
 	if long := max(w, h); long > MaxEdge {
 		w = max(1, (w*MaxEdge+long/2)/long)
 		h = max(1, (h*MaxEdge+long/2)/long)
 	}
+	return w, h
+}
+
+// estimatedPeak is an upper bound on the memory Process needs for an image
+// with this header: the decoded image plus the scaler's temporary buffer,
+// which holds the destination width by the source height.
+func estimatedPeak(cfg image.Config) int64 {
+	w, h := int64(cfg.Width), int64(cfg.Height)
+	decoded := w * h * bytesPerPixel(cfg.ColorModel)
+	// With no scaling needed the destination is as wide as the source; that
+	// overstates the buffer, which is fine for a bound.
+	sw, _ := scaledSize(w, h)
+	return decoded + sw*h*scalerCellBytes
+}
+
+// bytesPerPixel is what the decoder allocates per pixel for a colour model.
+// Unknown models get the largest size, so they err towards rejection.
+func bytesPerPixel(m color.Model) int64 {
+	if _, ok := m.(color.Palette); ok {
+		return 4 // converted to RGBA when scaled
+	}
+	switch m {
+	case color.RGBA64Model, color.NRGBA64Model:
+		return 8
+	case color.RGBAModel, color.NRGBAModel, color.CMYKModel:
+		return 4
+	case color.YCbCrModel:
+		return 3 // upper bound for every chroma subsampling
+	case color.Gray16Model:
+		return 2
+	case color.GrayModel:
+		return 1
+	}
+	return 8
+}
+
+// scale fits src's long side to MaxEdge, keeping the aspect ratio. It never
+// upscales. The result is opaque: src is painted over the paper colour.
+func scale(src image.Image) *image.RGBA {
+	sb := src.Bounds()
+	w64, h64 := scaledSize(int64(sb.Dx()), int64(sb.Dy()))
+	w, h := int(w64), int(h64) // at most MaxEdge, or the decoded size
 	dst := image.NewRGBA(image.Rect(0, 0, w, h))
 	draw.Draw(dst, dst.Bounds(), image.NewUniform(paper), image.Point{}, draw.Src)
 	draw.CatmullRom.Scale(dst, dst.Bounds(), src, sb, draw.Over, nil)

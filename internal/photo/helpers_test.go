@@ -103,14 +103,14 @@ func withExif(jpg []byte, order binary.ByteOrder, orient uint16, extra string) [
 	return withSegment(jpg, app1(exifPayload(order, orient, extra)))
 }
 
-// bombPNG has a valid signature and IHDR declaring w x h, followed by
-// garbage instead of image data.
-func bombPNG(w, h uint32) []byte {
+// bombPNG has a valid signature and IHDR declaring w x h at the given bit
+// depth and colour type, followed by garbage instead of image data.
+func bombPNG(w, h uint32, depth, colourType byte) []byte {
 	ihdr := make([]byte, 13)
 	binary.BigEndian.PutUint32(ihdr[0:], w)
 	binary.BigEndian.PutUint32(ihdr[4:], h)
-	ihdr[8] = 8 // bit depth
-	ihdr[9] = 2 // colour type: truecolour
+	ihdr[8] = depth
+	ihdr[9] = colourType
 
 	out := []byte("\x89PNG\r\n\x1a\n")
 	out = binary.BigEndian.AppendUint32(out, uint32(len(ihdr)))

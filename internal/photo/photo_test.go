@@ -145,9 +145,66 @@ func TestProcess_TransparentPNG(t *testing.T) {
 }
 
 func TestProcess_RejectsBomb(t *testing.T) {
-	_, err := Process(bytes.NewReader(bombPNG(10000, 10000)))
+	_, err := Process(bytes.NewReader(bombPNG(10000, 10000, 8, 2)))
 	if !errors.Is(err, ErrTooLarge) {
 		t.Errorf("err = %v, want ErrTooLarge", err)
+	}
+}
+
+func TestProcess_RejectsWideBomb(t *testing.T) {
+	// Passes MaxPixels with room to spare, but one row is enormous.
+	_, err := Process(bytes.NewReader(bombPNG(50_000_000, 1, 8, 2)))
+	if !errors.Is(err, ErrTooLarge) {
+		t.Errorf("err = %v, want ErrTooLarge", err)
+	}
+}
+
+func TestProcess_RejectsDeepPNG(t *testing.T) {
+	// 16-bit RGBA at 7000x6000: inside MaxSide and MaxPixels, but eight
+	// bytes per pixel puts it over the memory budget.
+	data := bombPNG(7000, 6000, 16, 6)
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Width > MaxSide || cfg.Height > MaxSide || cfg.Width*cfg.Height > MaxPixels {
+		t.Fatal("test input should pass the side and pixel limits")
+	}
+	if _, err := Process(bytes.NewReader(data)); !errors.Is(err, ErrTooLarge) {
+		t.Errorf("err = %v, want ErrTooLarge", err)
+	}
+}
+
+func TestEstimatedPeak(t *testing.T) {
+	tests := []struct {
+		name string
+		w, h int
+		m    color.Model
+		over bool
+	}{
+		{"12 MP JPEG", 4000, 3000, color.YCbCrModel, false},
+		{"24 MP JPEG", 6000, 4000, color.YCbCrModel, false},
+		{"48 MP JPEG", 8064, 6048, color.YCbCrModel, true},
+		{"12 MP JPEG portrait", 3000, 4000, color.YCbCrModel, false},
+		{"8-bit PNG screenshot", 1290, 2796, color.RGBAModel, false},
+		{"16-bit PNG", 7000, 6000, color.RGBA64Model, true},
+		{"unknown model counts as 8 bytes", 7000, 6000, color.ModelFunc(func(c color.Color) color.Color { return c }), true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := estimatedPeak(image.Config{ColorModel: tt.m, Width: tt.w, Height: tt.h})
+			if (got > MaxDecodeBytes) != tt.over {
+				t.Errorf("estimatedPeak = %d MiB, over budget = %v, want %v", got>>20, got > MaxDecodeBytes, tt.over)
+			}
+		})
+	}
+}
+
+func TestScaledSize_NoOverflow(t *testing.T) {
+	// w*MaxEdge exceeds 32 bits; the result must still keep the aspect ratio.
+	w, h := scaledSize(2_000_000, 1)
+	if w != MaxEdge || h != 1 {
+		t.Errorf("scaledSize = %dx%d, want %dx1", w, h, MaxEdge)
 	}
 }
 
@@ -193,6 +250,10 @@ func TestProcess_RejectsInvalid(t *testing.T) {
 
 func BenchmarkProcess_12MP(b *testing.B) {
 	data := jpegBytes(b, 4000, 3000, red)
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		b.Fatal(err)
+	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
@@ -200,4 +261,5 @@ func BenchmarkProcess_12MP(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
+	b.ReportMetric(float64(estimatedPeak(cfg)), "estimate-B/op")
 }
