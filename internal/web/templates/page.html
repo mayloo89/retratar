@@ -19,6 +19,7 @@
 <div class="blk-frame" aria-hidden="true">{{.Initial}}</div>
 <div><h1 class="blk-name">{{.Name}}</h1><p class="blk-address">{{.Address}}</p></div>
 </header>
+{{if .PhotoURL}}<figure class="blk-photo"><img src="{{.PhotoURL}}" width="{{.PhotoWidth}}" height="{{.PhotoHeight}}" alt="Foto de {{.Name}}"></figure>{{end}}
 <section class="blk-box blk-mood" aria-labelledby="blk-mood-title">
 <h2 class="blk-bar" id="blk-mood-title">cómo estoy</h2>
 <div class="blk-inner">

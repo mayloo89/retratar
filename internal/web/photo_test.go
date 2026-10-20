@@ -912,3 +912,75 @@ func TestPhotoBox_ShownToOwnersWhoLostUploadRights(t *testing.T) {
 		t.Errorf("preview status = %d, want 200", r.Code)
 	}
 }
+
+func TestPage_ShowsPhoto(t *testing.T) {
+	e := newPhotoEnv(t)
+	c := e.signUp(t, "ana@example.com", "ana", true)
+	wantStatus(t, e.post(t, c, "/name", "application/x-www-form-urlencoded", strings.NewReader("name=Ana")), http.StatusSeeOther)
+	wantStatus(t, e.upload(t, c, testJPEG(t, 60, 30)), http.StatusSeeOther)
+	key := e.currentKey(t, c)
+
+	page := e.status(t, anaHost, "/")
+	wantStatus(t, page, http.StatusOK)
+	body := string(page.Body)
+	want := `<figure class="blk-photo"><img src="/photo/` + key + `.jpg" width="60" height="30" alt="Foto de Ana"></figure>`
+	if !strings.Contains(body, want) {
+		t.Fatalf("page does not contain %q; body: %.1500s", want, body)
+	}
+	if strings.Contains(body, `loading="lazy"`) {
+		t.Error("photo is lazy-loaded, want eager: it is in the first screen")
+	}
+	// The photo comes right after the identity header.
+	if strings.Index(body, "</header>") > strings.Index(body, "blk-photo") {
+		t.Error("photo is before the identity header's end")
+	}
+
+	// The link and the route agree: the src resolves on the same page host.
+	img := e.status(t, anaHost, "/photo/"+key+".jpg")
+	wantStatus(t, img, http.StatusOK)
+	if got := img.Header.Get("Content-Type"); got != "image/jpeg" {
+		t.Errorf("Content-Type = %q, want image/jpeg", got)
+	}
+}
+
+func TestPage_PhotoAltEscaped(t *testing.T) {
+	e := newPhotoEnv(t)
+	c := e.signUp(t, "ana@example.com", "ana", true)
+	wantStatus(t, e.post(t, c, "/name", "application/x-www-form-urlencoded",
+		strings.NewReader(url.Values{"name": {`<b>"x"`}}.Encode())), http.StatusSeeOther)
+	wantStatus(t, e.upload(t, c, testJPEG(t, 60, 30)), http.StatusSeeOther)
+
+	body := string(e.status(t, anaHost, "/").Body)
+	if strings.Contains(body, `<b>"x"`) {
+		t.Error("display name appears unescaped")
+	}
+	if !strings.Contains(body, `alt="Foto de &lt;b&gt;&#34;x&#34;"`) {
+		t.Errorf("alt is not the escaped name; body: %.1500s", body)
+	}
+}
+
+func TestPage_NoPhotoUnchanged(t *testing.T) {
+	e := newPhotoEnv(t)
+	e.signUp(t, "ana@example.com", "ana", true)
+
+	body := string(e.status(t, anaHost, "/").Body)
+	for _, banned := range []string{"blk-photo", "<img", "<figure"} {
+		if strings.Contains(body, banned) {
+			t.Errorf("page without a photo contains %q", banned)
+		}
+	}
+}
+
+func TestPage_PhotoRemoved(t *testing.T) {
+	e := newPhotoEnv(t)
+	c := e.signUp(t, "ana@example.com", "ana", true)
+	wantStatus(t, e.upload(t, c, testJPEG(t, 60, 30)), http.StatusSeeOther)
+	if !strings.Contains(string(e.status(t, anaHost, "/").Body), "blk-photo") {
+		t.Fatal("page does not show the uploaded photo")
+	}
+
+	wantStatus(t, e.post(t, c, "/photo/remove", "application/x-www-form-urlencoded", strings.NewReader("")), http.StatusSeeOther)
+	if body := string(e.status(t, anaHost, "/").Body); strings.Contains(body, "blk-photo") {
+		t.Error("page still shows the photo after removal")
+	}
+}
