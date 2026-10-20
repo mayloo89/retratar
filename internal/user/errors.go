@@ -47,4 +47,9 @@ var (
 	// control character, a line break or invalid UTF-8; see
 	// [NormaliseDisplayName].
 	ErrInvalidDisplayName = errors.New("invalid display name")
+
+	// ErrPhotoNotAllowed means a photo was not set: the account is not on the
+	// upload allowlist, or it already uploaded one today. The two are not told
+	// apart; the caller checks the allowlist first when it needs to say which.
+	ErrPhotoNotAllowed = errors.New("photo upload not allowed")
 )

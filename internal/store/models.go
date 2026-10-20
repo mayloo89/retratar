@@ -52,12 +52,17 @@ type Session struct {
 }
 
 type User struct {
-	ID          uuid.UUID
-	Email       string
-	Handle      *string
-	State       string
-	Tier        string
-	Locale      string
-	CreatedAt   pgtype.Timestamptz
-	DisplayName *string
+	ID              uuid.UUID
+	Email           string
+	Handle          *string
+	State           string
+	Tier            string
+	Locale          string
+	CreatedAt       pgtype.Timestamptz
+	DisplayName     *string
+	PhotoKey        *string
+	PhotoWidth      *int32
+	PhotoHeight     *int32
+	PhotoUploadedAt pgtype.Timestamptz
+	CanUploadPhotos bool
 }

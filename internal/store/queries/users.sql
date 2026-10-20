@@ -48,3 +48,39 @@ UPDATE users
 SET display_name = sqlc.narg(display_name)
 WHERE id = @id
 RETURNING *;
+
+-- name: SetPhoto :one
+--
+-- Replaces the account's photo and returns the key it replaced ('' when it had
+-- none). One statement does the allowlist check, the once-per-day check and the
+-- read of the old key, so two uploads racing cannot both win and the caller
+-- always learns which file to delete.
+--
+-- The subselect locks the row (FOR UPDATE) so a second concurrent SetPhoto
+-- waits, then re-evaluates the WHERE against the first one's photo_uploaded_at
+-- and matches nothing. No rows means "not allowed": not allowlisted, or already
+-- uploaded since @day_start.
+UPDATE users
+SET photo_key = @photo_key,
+    photo_width = @photo_width,
+    photo_height = @photo_height,
+    photo_uploaded_at = now()
+FROM (SELECT u.id, u.photo_key AS old_key FROM users u WHERE u.id = @id FOR UPDATE) old
+WHERE users.id = old.id
+  AND users.can_upload_photos
+  AND (users.photo_uploaded_at IS NULL OR users.photo_uploaded_at < @day_start)
+RETURNING coalesce(old.old_key, '')::text AS old_key;
+
+-- name: RemovePhoto :one
+--
+-- Clears the photo and returns the key it had ('' when none). photo_uploaded_at
+-- stays, so removing does not reset the daily limit. Removing when there is no
+-- photo matches the row and changes nothing, so it is a no-op and not an error.
+UPDATE users
+SET photo_key = NULL, photo_width = NULL, photo_height = NULL
+FROM (SELECT u.id, u.photo_key AS old_key FROM users u WHERE u.id = @id FOR UPDATE) old
+WHERE users.id = old.id
+RETURNING coalesce(old.old_key, '')::text AS old_key;
+
+-- name: GetUserByPhotoKey :one
+SELECT * FROM users WHERE photo_key = @photo_key;
