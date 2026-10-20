@@ -158,8 +158,7 @@ func (s *Server) processPhoto(r *http.Request, data []byte) (photo.Result, int, 
 	case <-r.Context().Done():
 		return photo.Result{}, http.StatusServiceUnavailable, ""
 	}
-	res, err := photo.Process(bytes.NewReader(data))
-	<-s.photoSlot
+	res, err := s.processLocked(data)
 
 	switch {
 	case err == nil:
@@ -172,6 +171,19 @@ func (s *Server) processPhoto(r *http.Request, data []byte) (photo.Result, int, 
 		s.Logger.ErrorContext(r.Context(), "process photo", slog.String("error", err.Error()))
 		return photo.Result{}, http.StatusInternalServerError, ""
 	}
+}
+
+// processLocked runs the processor while the caller holds the slot, and gives
+// the slot back on every exit, a panic included. Net/http recovers a panic for
+// its one request; a slot left full would turn every later upload into a 503
+// until the process restarted.
+func (s *Server) processLocked(data []byte) (photo.Result, error) {
+	defer func() { <-s.photoSlot }()
+	process := s.process
+	if process == nil {
+		process = photo.Process
+	}
+	return process(bytes.NewReader(data))
 }
 
 func (s *Server) photoWait() time.Duration {

@@ -12,6 +12,7 @@
 package web
 
 import (
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -21,6 +22,7 @@ import (
 	"github.com/mayloo89/retratar/internal/guestbook"
 	"github.com/mayloo89/retratar/internal/mail"
 	"github.com/mayloo89/retratar/internal/mood"
+	"github.com/mayloo89/retratar/internal/photo"
 	"github.com/mayloo89/retratar/internal/photostore"
 	"github.com/mayloo89/retratar/internal/session"
 	"github.com/mayloo89/retratar/internal/user"
@@ -47,6 +49,9 @@ type Server struct {
 	// (Handler runs once per process), so the zero Server has none and
 	// handlePhotoUpload must only be reached through Handler.
 	photoSlot chan struct{}
+	// process decodes and re-encodes an upload; nil means photo.Process. Tests
+	// replace it to make processing panic.
+	process func(io.Reader) (photo.Result, error)
 	// photoSlotWait overrides photoSlotWait; tests shorten it.
 	photoSlotWait time.Duration
 }

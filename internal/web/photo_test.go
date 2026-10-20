@@ -30,6 +30,7 @@ import (
 	"github.com/mayloo89/retratar/internal/config"
 	"github.com/mayloo89/retratar/internal/guestbook"
 	"github.com/mayloo89/retratar/internal/mood"
+	"github.com/mayloo89/retratar/internal/photo"
 	"github.com/mayloo89/retratar/internal/photostore"
 	"github.com/mayloo89/retratar/internal/session"
 	"github.com/mayloo89/retratar/internal/testdb"
@@ -870,4 +871,18 @@ func TestPhotoServe_PagesSurfaceStillNeverSetsCookies(t *testing.T) {
 	if len(resp.Cookies) != 0 {
 		t.Errorf("page-host photo set cookies: %v", resp.Cookies)
 	}
+}
+
+func TestPhotoUpload_PanicReleasesSlot(t *testing.T) {
+	e := newPhotoEnv(t)
+	c := e.signUp(t, "ana@example.com", "ana", true)
+
+	e.srv.SetPhotoProcess(func(io.Reader) (photo.Result, error) { panic("decoder blew up") })
+	// The Recover middleware turns the panic into a 500 for this request.
+	wantStatus(t, e.upload(t, c, testJPEG(t, 40, 20)), http.StatusInternalServerError)
+
+	// The slot must be free again: a working processor now succeeds, not 503.
+	e.srv.SetPhotoProcess(nil)
+	e.srv.SetPhotoSlotWait(50 * time.Millisecond)
+	wantStatus(t, e.upload(t, c, testJPEG(t, 40, 20)), http.StatusSeeOther)
 }
