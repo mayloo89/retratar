@@ -886,3 +886,29 @@ func TestPhotoUpload_PanicReleasesSlot(t *testing.T) {
 	e.srv.SetPhotoSlotWait(50 * time.Millisecond)
 	wantStatus(t, e.upload(t, c, testJPEG(t, 40, 20)), http.StatusSeeOther)
 }
+
+func TestPhotoBox_ShownToOwnersWhoLostUploadRights(t *testing.T) {
+	e := newPhotoEnv(t)
+	c := e.signUp(t, "ana@example.com", "ana", true)
+	wantStatus(t, e.upload(t, c, testJPEG(t, 40, 20)), http.StatusSeeOther)
+	key := e.currentKey(t, c)
+
+	if _, err := e.pool.Exec(t.Context(), `UPDATE users SET can_upload_photos = false`); err != nil {
+		t.Fatal(err)
+	}
+	home := e.home(t, c)
+	for _, want := range []string{boxTitle, `src="/photo/` + key + `.jpg"`, `action="/photo/remove"`, "Sacar foto"} {
+		if !strings.Contains(home, want) {
+			t.Errorf("dashboard does not contain %q", want)
+		}
+	}
+	for _, banned := range []string{`name="photo"`, `action="/photo" enctype`, msgToday, "Subir foto"} {
+		if strings.Contains(home, banned) {
+			t.Errorf("dashboard contains %q, want it absent without upload rights", banned)
+		}
+	}
+	// The preview route works for them.
+	if r := e.status(t, appHost, "/photo/"+key+".jpg", c); r.Code != http.StatusOK {
+		t.Errorf("preview status = %d, want 200", r.Code)
+	}
+}

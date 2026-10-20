@@ -32,16 +32,16 @@
 {{with .Error}}<p role="alert">{{.}}</p>{{end}}
 </div></section>
 
-{{if .CanUploadPhoto}}<section class="box"><h2 class="bar">Tu foto</h2><div class="inner">
+{{if or .CanUploadPhoto .PhotoURL}}<section class="box"><h2 class="bar">Tu foto</h2><div class="inner">
 {{if .PhotoURL}}<img src="{{.PhotoURL}}" width="{{.PhotoWidth}}" height="{{.PhotoHeight}}" alt="Tu foto actual">
-{{end}}{{if .PhotoChangedToday}}<p class="help">Ya cambiaste tu foto hoy. Mañana podés subir otra.</p>
+{{end}}{{if .CanUploadPhoto}}{{if .PhotoChangedToday}}<p class="help">Ya cambiaste tu foto hoy. Mañana podés subir otra.</p>
 {{else}}<form method="post" action="/photo" enctype="multipart/form-data">
 <div class="field"><label for="photo">Elegí una foto</label>
 <input type="file" id="photo" name="photo" accept="image/jpeg,image/png" required>
 <p class="help">Una por día. JPG o PNG.</p></div>
 <div class="actions"><button type="submit">Subir foto</button></div>
 </form>
-{{end}}{{if .PhotoURL}}<form method="post" action="/photo/remove">
+{{end}}{{end}}{{if .PhotoURL}}<form method="post" action="/photo/remove">
 <div class="actions"><button class="quiet" type="submit">Sacar foto</button></div>
 </form>
 {{end}}{{with .PhotoError}}<p role="alert">{{.}}</p>{{end}}
