@@ -118,6 +118,21 @@ func (s *Store) Save(key string, jpeg []byte) error {
 		cleanup()
 		return fmt.Errorf("photostore: rename: %w", err)
 	}
+	// A rename is recorded in the directory, not in the file. Without this sync
+	// a power cut after the database commit can lose the rename, leaving a row
+	// that names a missing file. Failing here fails the upload before the
+	// commit, which is the safe direction.
+	d, openErr := os.Open(s.dir)
+	if openErr != nil {
+		return fmt.Errorf("photostore: open dir: %w", openErr)
+	}
+	if syncErr := d.Sync(); syncErr != nil {
+		_ = d.Close()
+		return fmt.Errorf("photostore: sync dir: %w", syncErr)
+	}
+	if closeErr := d.Close(); closeErr != nil {
+		return fmt.Errorf("photostore: close dir: %w", closeErr)
+	}
 	return nil
 }
 
