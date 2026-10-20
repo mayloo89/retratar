@@ -96,6 +96,32 @@ type User struct {
 	// empty when unset, for the same reason Handle is; use [User.ShownName]
 	// to display one.
 	DisplayName string
+
+	// PhotoKey names the owner's current photo in the photo store, or is empty
+	// when there is none. PhotoWidth and PhotoHeight are its size and are zero
+	// exactly when PhotoKey is empty.
+	PhotoKey    string
+	PhotoWidth  int
+	PhotoHeight int
+
+	// PhotoUploadedAt is the time of the last upload, or the zero time if
+	// there never was one. Removing a photo leaves it alone.
+	PhotoUploadedAt time.Time
+
+	// CanUploadPhotos is the allowlist flag, set by the operator with SQL.
+	CanUploadPhotos bool
+}
+
+// UploadedPhotoOn reports whether the last upload falls on the same calendar
+// day as day, in day's own location. Callers pass a time in the zone that
+// defines their "day" (the web layer uses Argentina time).
+func (u User) UploadedPhotoOn(day time.Time) bool {
+	if u.PhotoUploadedAt.IsZero() {
+		return false
+	}
+	y1, m1, d1 := u.PhotoUploadedAt.In(day.Location()).Date()
+	y2, m2, d2 := day.Date()
+	return y1 == y2 && m1 == m2 && d1 == d2
 }
 
 // ShownName is how the account's page identifies its owner: the display name
@@ -379,6 +405,59 @@ func isDisallowedFormat(r rune) bool {
 	return false
 }
 
+// SetPhoto records a new photo for the account and returns the key it replaced,
+// or "" if there was none. key must already be stored; the caller deletes the
+// old file only after this returns.
+//
+// dayStart is the start of the current day in the product's time zone. An
+// account that uploaded at or after it gets [ErrPhotoNotAllowed], as does one
+// that is not on the allowlist. The check and the write are one statement, so
+// two uploads racing cannot both succeed.
+func (s *Service) SetPhoto(ctx context.Context, id uuid.UUID, key string, w, h int, dayStart time.Time) (string, error) {
+	w32, h32 := int32(w), int32(h) //nolint:gosec // G115: photo.MaxEdge bounds both well inside int32
+	old, err := s.queries.SetPhoto(ctx, store.SetPhotoParams{
+		ID:          id,
+		PhotoKey:    &key,
+		PhotoWidth:  &w32,
+		PhotoHeight: &h32,
+		DayStart:    pgtype.Timestamptz{Time: dayStart, Valid: true},
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", ErrPhotoNotAllowed
+		}
+		return "", fmt.Errorf("set photo: %w", err)
+	}
+	return old, nil
+}
+
+// RemovePhoto clears the account's photo and returns the key it had, or "" if
+// there was none. It keeps the time of the last upload, so removing a photo
+// does not let the owner upload another one the same day.
+func (s *Service) RemovePhoto(ctx context.Context, id uuid.UUID) (string, error) {
+	old, err := s.queries.RemovePhoto(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", ErrUserNotFound
+		}
+		return "", fmt.Errorf("remove photo: %w", err)
+	}
+	return old, nil
+}
+
+// ByPhotoKey returns the account whose current photo is key. A key nobody
+// holds, including one that was replaced or removed, is [ErrUserNotFound].
+func (s *Service) ByPhotoKey(ctx context.Context, key string) (User, error) {
+	row, err := s.queries.GetUserByPhotoKey(ctx, &key)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return User{}, ErrUserNotFound
+		}
+		return User{}, fmt.Errorf("get user by photo key: %w", err)
+	}
+	return fromRow(row), nil
+}
+
 // isUniqueViolation reports whether err is a Postgres unique-index conflict.
 func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
@@ -453,6 +532,17 @@ func fromRow(row store.User) User {
 	if row.DisplayName != nil {
 		u.DisplayName = *row.DisplayName
 	}
+	if row.PhotoKey != nil {
+		u.PhotoKey = *row.PhotoKey
+		if row.PhotoWidth != nil {
+			u.PhotoWidth = int(*row.PhotoWidth)
+		}
+		if row.PhotoHeight != nil {
+			u.PhotoHeight = int(*row.PhotoHeight)
+		}
+	}
+	u.PhotoUploadedAt = row.PhotoUploadedAt.Time
+	u.CanUploadPhotos = row.CanUploadPhotos
 	return u
 }
 

@@ -174,12 +174,20 @@ const maxFormBody = 4 << 10
 
 // BodyLimit refuses request bodies larger than [maxFormBody].
 //
+// POST /photo is the one exception, matched by method and exact path: it takes
+// a photo of up to photo.MaxBytes, so handlePhotoUpload sets its own, larger
+// cap. Every other route keeps the 4 KiB limit.
+//
 // A declared Content-Length over the limit is answered with 413 at once. A
 // chunked or understated body has no usable length up front, so it is wrapped
 // in http.MaxBytesReader instead; the handler's ParseForm then fails into its
 // existing error path. It must run before any handler calls ParseForm.
 func BodyLimit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == photoUploadPath {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if r.Body != nil && r.Body != http.NoBody {
 			if r.ContentLength > maxFormBody {
 				http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)

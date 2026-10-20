@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -68,6 +69,11 @@ type Config struct {
 	// [Config.Validate].
 	MailSender string
 
+	// PhotosDir is where processed photos are stored. Required, and absolute,
+	// in production, where it is a mounted volume; development defaults to a
+	// relative directory under the working directory.
+	PhotosDir string
+
 	ShutdownTimeout time.Duration
 }
 
@@ -112,6 +118,7 @@ func Load(getenv Getenv) (Config, error) {
 		SMTPPassword:    getenv("SMTP_PASSWORD"),
 		MailFrom:        getenv("MAIL_FROM"),
 		MailSender:      getenv("MAIL_SENDER"),
+		PhotosDir:       photosDir(getenv),
 		ShutdownTimeout: shutdown,
 	}
 
@@ -119,6 +126,22 @@ func Load(getenv Getenv) (Config, error) {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+// defaultPhotosDir is the development location for stored photos, relative to
+// the working directory and gitignored (/var/).
+const defaultPhotosDir = "var/photos"
+
+// photosDir reads PHOTOS_DIR. Only development gets a default: in production an
+// unset value stays empty so [Config.Validate] can refuse it.
+func photosDir(getenv Getenv) string {
+	if dir := getenv("PHOTOS_DIR"); dir != "" {
+		return dir
+	}
+	if Environment(getenv("ENV")) == EnvProduction {
+		return ""
+	}
+	return defaultPhotosDir
 }
 
 // IsProduction reports whether the process runs in production. Callers use it
@@ -184,6 +207,12 @@ func (c Config) Validate() error {
 			if val == "" {
 				errs = append(errs, fmt.Errorf("%w: %s is required in production", ErrInvalidConfig, name))
 			}
+		}
+		if c.PhotosDir == "" {
+			errs = append(errs, fmt.Errorf("%w: PHOTOS_DIR is required in production", ErrInvalidConfig))
+		} else if !filepath.IsAbs(c.PhotosDir) {
+			errs = append(errs, fmt.Errorf("%w: PHOTOS_DIR=%q must be an absolute path in production",
+				ErrInvalidConfig, c.PhotosDir))
 		}
 		if c.MailSender == "log" {
 			errs = append(errs, fmt.Errorf(

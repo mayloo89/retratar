@@ -23,12 +23,19 @@ ARG TARGETARCH=amd64
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath -ldflags="-s -w" -o /out/server ./cmd/server
 
+# The photos directory, created here so the final image owns it. A new named
+# volume copies the ownership of the image directory it mounts over; without
+# this one the volume would be root-owned and the nonroot process could not
+# write to it.
+RUN mkdir -p /out/data/photos
+
 FROM gcr.io/distroless/static-debian12:nonroot
 
 COPY --from=build /out/server /usr/local/bin/server
+COPY --from=build --chown=65532:65532 /out/data /data
 
-# distroless nonroot is uid 65532. The process never needs to write to its
-# filesystem; run the container with --read-only.
+# distroless nonroot is uid 65532. The process writes only to /data/photos,
+# which is a volume; run the container with --read-only.
 USER nonroot:nonroot
 
 EXPOSE 8080

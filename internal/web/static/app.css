@@ -132,3 +132,5 @@ ul.entries { list-style: none; margin: 0; padding: 0; }
 @media (prefers-reduced-motion: no-preference) {
   a, button { transition: background-color .15s ease-out, color .15s ease-out; }
 }
+
+.inner img { max-width: 100%; height: auto; display: block; }

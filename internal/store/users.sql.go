@@ -16,7 +16,7 @@ const claimHandle = `-- name: ClaimHandle :one
 UPDATE users
 SET handle = $1, state = 'active'
 WHERE id = $2 AND handle IS NULL
-RETURNING id, email, handle, state, tier, locale, created_at, display_name
+RETURNING id, email, handle, state, tier, locale, created_at, display_name, photo_key, photo_width, photo_height, photo_uploaded_at, can_upload_photos
 `
 
 type ClaimHandleParams struct {
@@ -41,12 +41,17 @@ func (q *Queries) ClaimHandle(ctx context.Context, arg ClaimHandleParams) (User,
 		&i.Locale,
 		&i.CreatedAt,
 		&i.DisplayName,
+		&i.PhotoKey,
+		&i.PhotoWidth,
+		&i.PhotoHeight,
+		&i.PhotoUploadedAt,
+		&i.CanUploadPhotos,
 	)
 	return i, err
 }
 
 const getUserByHandle = `-- name: GetUserByHandle :one
-SELECT id, email, handle, state, tier, locale, created_at, display_name FROM users WHERE lower(handle) = lower($1)
+SELECT id, email, handle, state, tier, locale, created_at, display_name, photo_key, photo_width, photo_height, photo_uploaded_at, can_upload_photos FROM users WHERE lower(handle) = lower($1)
 `
 
 func (q *Queries) GetUserByHandle(ctx context.Context, handle string) (User, error) {
@@ -61,12 +66,17 @@ func (q *Queries) GetUserByHandle(ctx context.Context, handle string) (User, err
 		&i.Locale,
 		&i.CreatedAt,
 		&i.DisplayName,
+		&i.PhotoKey,
+		&i.PhotoWidth,
+		&i.PhotoHeight,
+		&i.PhotoUploadedAt,
+		&i.CanUploadPhotos,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, handle, state, tier, locale, created_at, display_name FROM users WHERE id = $1
+SELECT id, email, handle, state, tier, locale, created_at, display_name, photo_key, photo_width, photo_height, photo_uploaded_at, can_upload_photos FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
@@ -81,6 +91,36 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.Locale,
 		&i.CreatedAt,
 		&i.DisplayName,
+		&i.PhotoKey,
+		&i.PhotoWidth,
+		&i.PhotoHeight,
+		&i.PhotoUploadedAt,
+		&i.CanUploadPhotos,
+	)
+	return i, err
+}
+
+const getUserByPhotoKey = `-- name: GetUserByPhotoKey :one
+SELECT id, email, handle, state, tier, locale, created_at, display_name, photo_key, photo_width, photo_height, photo_uploaded_at, can_upload_photos FROM users WHERE photo_key = $1
+`
+
+func (q *Queries) GetUserByPhotoKey(ctx context.Context, photoKey *string) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByPhotoKey, photoKey)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Handle,
+		&i.State,
+		&i.Tier,
+		&i.Locale,
+		&i.CreatedAt,
+		&i.DisplayName,
+		&i.PhotoKey,
+		&i.PhotoWidth,
+		&i.PhotoHeight,
+		&i.PhotoUploadedAt,
+		&i.CanUploadPhotos,
 	)
 	return i, err
 }
@@ -103,11 +143,29 @@ func (q *Queries) RandomActiveHandle(ctx context.Context, excludeID pgtype.UUID)
 	return handle, err
 }
 
+const removePhoto = `-- name: RemovePhoto :one
+UPDATE users
+SET photo_key = NULL, photo_width = NULL, photo_height = NULL
+FROM (SELECT u.id, u.photo_key AS old_key FROM users u WHERE u.id = $1 FOR UPDATE) old
+WHERE users.id = old.id
+RETURNING coalesce(old.old_key, '')::text AS old_key
+`
+
+// Clears the photo and returns the key it had (” when none). photo_uploaded_at
+// stays, so removing does not reset the daily limit. Removing when there is no
+// photo matches the row and changes nothing, so it is a no-op and not an error.
+func (q *Queries) RemovePhoto(ctx context.Context, id uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, removePhoto, id)
+	var old_key string
+	err := row.Scan(&old_key)
+	return old_key, err
+}
+
 const setDisplayName = `-- name: SetDisplayName :one
 UPDATE users
 SET display_name = $1
 WHERE id = $2
-RETURNING id, email, handle, state, tier, locale, created_at, display_name
+RETURNING id, email, handle, state, tier, locale, created_at, display_name, photo_key, photo_width, photo_height, photo_uploaded_at, can_upload_photos
 `
 
 type SetDisplayNameParams struct {
@@ -128,15 +186,66 @@ func (q *Queries) SetDisplayName(ctx context.Context, arg SetDisplayNameParams) 
 		&i.Locale,
 		&i.CreatedAt,
 		&i.DisplayName,
+		&i.PhotoKey,
+		&i.PhotoWidth,
+		&i.PhotoHeight,
+		&i.PhotoUploadedAt,
+		&i.CanUploadPhotos,
 	)
 	return i, err
+}
+
+const setPhoto = `-- name: SetPhoto :one
+UPDATE users
+SET photo_key = $1,
+    photo_width = $2,
+    photo_height = $3,
+    photo_uploaded_at = now()
+FROM (SELECT u.id, u.photo_key AS old_key FROM users u WHERE u.id = $5 FOR UPDATE) old
+WHERE users.id = old.id
+  AND users.can_upload_photos
+  AND (users.photo_uploaded_at IS NULL OR users.photo_uploaded_at < $4)
+RETURNING coalesce(old.old_key, '')::text AS old_key
+`
+
+type SetPhotoParams struct {
+	PhotoKey    *string
+	PhotoWidth  *int32
+	PhotoHeight *int32
+	DayStart    pgtype.Timestamptz
+	ID          uuid.UUID
+}
+
+// Replaces the account's photo and returns the key it replaced (” when it had
+// none). One statement does the allowlist check, the once-per-day check and the
+// read of the old key, so two uploads racing cannot both win and the caller
+// always learns which file to delete.
+//
+// Two uploads racing cannot both win: the loser's WHERE is re-checked against
+// the winner's committed photo_uploaded_at and matches nothing. Postgres does
+// that re-check on an UPDATE anyway; FOR UPDATE is not what makes it work. What
+// FOR UPDATE buys is that old_key, read in the subselect, is the latest value
+// once the row lock is granted, so the caller deletes the file the database
+// really replaced. No rows means "not allowed": not allowlisted, or already
+// uploaded since @day_start.
+func (q *Queries) SetPhoto(ctx context.Context, arg SetPhotoParams) (string, error) {
+	row := q.db.QueryRow(ctx, setPhoto,
+		arg.PhotoKey,
+		arg.PhotoWidth,
+		arg.PhotoHeight,
+		arg.DayStart,
+		arg.ID,
+	)
+	var old_key string
+	err := row.Scan(&old_key)
+	return old_key, err
 }
 
 const upsertUserByEmail = `-- name: UpsertUserByEmail :one
 INSERT INTO users (email)
 VALUES ($1)
 ON CONFLICT (lower(email)) DO UPDATE SET email = users.email
-RETURNING id, email, handle, state, tier, locale, created_at, display_name
+RETURNING id, email, handle, state, tier, locale, created_at, display_name, photo_key, photo_width, photo_height, photo_uploaded_at, can_upload_photos
 `
 
 // Returns the account for an email, creating it on first use. Login is a signup
@@ -158,6 +267,11 @@ func (q *Queries) UpsertUserByEmail(ctx context.Context, email string) (User, er
 		&i.Locale,
 		&i.CreatedAt,
 		&i.DisplayName,
+		&i.PhotoKey,
+		&i.PhotoWidth,
+		&i.PhotoHeight,
+		&i.PhotoUploadedAt,
+		&i.CanUploadPhotos,
 	)
 	return i, err
 }

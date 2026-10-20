@@ -32,6 +32,16 @@ type appHomeData struct {
 	MoodOptions []moodOption
 	Error       string
 
+	// CanUploadPhoto shows the "Tu foto" box; only allowlisted accounts see
+	// it. PhotoURL is the app-host path of the current photo, empty when
+	// there is none, and PhotoWidth/PhotoHeight its size.
+	CanUploadPhoto    bool
+	PhotoURL          string
+	PhotoWidth        int
+	PhotoHeight       int
+	PhotoChangedToday bool
+	PhotoError        string
+
 	// Guestbook is the owner's entries of any state, newest first.
 	Guestbook []ownEntryView
 }
@@ -77,7 +87,27 @@ func (s *Server) renderAppHome(w http.ResponseWriter, r *http.Request, status in
 // next to the name form instead of the mood form. [handleNameSubmit] passes
 // u with the rejected text in DisplayName so the field keeps what was typed.
 func (s *Server) renderAppHomeErrors(w http.ResponseWriter, r *http.Request, status int, u user.User, errMsg, nameErr string) {
-	data := appHomeData{Handle: u.Handle, DisplayName: u.DisplayName, NameError: nameErr, Error: errMsg}
+	s.renderAppHomeMessages(w, r, status, u, homeMessages{Mood: errMsg, Name: nameErr})
+}
+
+// homeMessages are the per-form error messages the dashboard can show; each
+// appears next to its own form.
+type homeMessages struct {
+	Mood, Name, Photo string
+}
+
+// renderAppHomeMessages is the dashboard renderer the others delegate to.
+func (s *Server) renderAppHomeMessages(w http.ResponseWriter, r *http.Request, status int, u user.User, msgs homeMessages) {
+	data := appHomeData{
+		Handle: u.Handle, DisplayName: u.DisplayName,
+		NameError: msgs.Name, Error: msgs.Mood, PhotoError: msgs.Photo,
+		CanUploadPhoto: u.CanUploadPhotos,
+	}
+	if u.PhotoKey != "" {
+		data.PhotoURL = photoURL(u.PhotoKey)
+		data.PhotoWidth, data.PhotoHeight = u.PhotoWidth, u.PhotoHeight
+	}
+	data.PhotoChangedToday = u.UploadedPhotoOn(s.now().In(argentina))
 	// An account without a handle has no page yet; POST /mood can still
 	// re-render this dashboard for one, so leave PageURL empty for it.
 	if u.Handle != "" {
