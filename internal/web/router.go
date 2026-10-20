@@ -15,11 +15,13 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/mayloo89/retratar/internal/config"
 	"github.com/mayloo89/retratar/internal/guestbook"
 	"github.com/mayloo89/retratar/internal/mail"
 	"github.com/mayloo89/retratar/internal/mood"
+	"github.com/mayloo89/retratar/internal/photostore"
 	"github.com/mayloo89/retratar/internal/session"
 	"github.com/mayloo89/retratar/internal/user"
 )
@@ -35,6 +37,18 @@ type Server struct {
 	Moods     *mood.Service
 	Guestbook *guestbook.Service
 	Mailer    mail.Sender
+	Photos    *photostore.Store
+
+	// Now is the clock; nil means time.Now. Tests set it to cross a day
+	// boundary.
+	Now func() time.Time
+
+	// photoSlot admits one photo to photo.Process at a time. Handler creates it
+	// (Handler runs once per process), so the zero Server has none and
+	// handlePhotoUpload must only be reached through Handler.
+	photoSlot chan struct{}
+	// photoSlotWait overrides photoSlotWait; tests shorten it.
+	photoSlotWait time.Duration
 }
 
 // Handler builds the root handler: shared middleware, then a split by hostname
@@ -44,6 +58,8 @@ func (s *Server) Handler() http.Handler {
 	// Handler is called once per process (see cmd/server), so neither is a
 	// per-request or per-call allocation. reads has its own, looser budget
 	// than writes — see ogRateBurst/ogRateRefill in ratelimit.go.
+	s.photoSlot = make(chan struct{}, 1)
+
 	writes := newRateLimiter(writeRateBurst, writeRateRefill, limiterIdleTTL)
 	reads := newRateLimiter(ogRateBurst, ogRateRefill, limiterIdleTTL)
 
@@ -106,8 +122,8 @@ func (s *Server) hostSplit(app, pages http.Handler) http.Handler {
 // appRoutes serves the owner-facing surface.
 //
 // writes rate-limits the endpoints a script can abuse cheaply. POST /login is
-// the one that matters — it sends mail — but POST /handle, POST /mood and POST /name
-// are unbounded writes too, so they share the limiter. POST /logout is left off:
+// the one that matters — it sends mail — but POST /handle, POST /mood, POST /name,
+// POST /photo and POST /photo/remove are unbounded writes too, so they share the limiter. POST /logout is left off:
 // it sends nothing, its work is a single idempotent revoke, and a forged
 // logout is a nuisance rather than a cost. GET routes are read-only and the
 // login sub-steps (GET/POST /login/{token}) are already gated by the nonce
@@ -126,6 +142,9 @@ func (s *Server) appRoutes(writes, logins48 *rateLimiter) http.Handler {
 	mux.Handle("POST /handle", writes.rateLimit(http.HandlerFunc(s.handleClaimSubmit)))
 	mux.Handle("POST /mood", writes.rateLimit(http.HandlerFunc(s.handleMoodSubmit)))
 	mux.Handle("POST /name", writes.rateLimit(http.HandlerFunc(s.handleNameSubmit)))
+	mux.Handle("POST /photo", writes.rateLimit(http.HandlerFunc(s.handlePhotoUpload)))
+	mux.Handle("POST /photo/remove", writes.rateLimit(http.HandlerFunc(s.handlePhotoRemove)))
+	mux.HandleFunc("GET /photo/{file}", s.handleAppPhoto)
 	mux.HandleFunc("GET /sign/{handle}", s.handleGuestbookForm)
 	mux.Handle("POST /sign/{handle}", writes.rateLimit(http.HandlerFunc(s.handleGuestbookSign)))
 	mux.Handle("POST /guestbook/entries/{id}/hide", writes.rateLimit(http.HandlerFunc(s.handleGuestbookHide)))
@@ -146,6 +165,7 @@ func (s *Server) pageRoutes(reads *rateLimiter) http.Handler {
 	mux.HandleFunc("GET /{$}", s.handlePage)
 	mux.HandleFunc("GET /theme.css", s.handleTheme)
 	mux.Handle("GET /og.png", reads.rateLimit(http.HandlerFunc(s.handleOGImage)))
+	mux.Handle("GET /photo/{file}", reads.rateLimit(http.HandlerFunc(s.handlePagePhoto)))
 	return mux
 }
 

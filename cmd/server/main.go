@@ -21,6 +21,7 @@ import (
 	"github.com/mayloo89/retratar/internal/guestbook"
 	"github.com/mayloo89/retratar/internal/mail"
 	"github.com/mayloo89/retratar/internal/mood"
+	"github.com/mayloo89/retratar/internal/photostore"
 	"github.com/mayloo89/retratar/internal/session"
 	"github.com/mayloo89/retratar/internal/store"
 	"github.com/mayloo89/retratar/internal/user"
@@ -93,6 +94,11 @@ func run(ctx context.Context, args []string, getenv config.Getenv, stdout io.Wri
 	}
 	defer pool.Close()
 
+	photos, err := photostore.New(cfg.PhotosDir)
+	if err != nil {
+		return fmt.Errorf("open photo store: %w", err)
+	}
+
 	users := user.NewService(pool)
 	sessions := session.NewService(pool)
 
@@ -104,6 +110,7 @@ func run(ctx context.Context, args []string, getenv config.Getenv, stdout io.Wri
 		Moods:     mood.NewService(pool),
 		Guestbook: guestbook.NewService(pool),
 		Mailer:    mailer,
+		Photos:    photos,
 	}
 
 	public := newHTTPServer(cfg.Addr, srv.Handler(), logger)
