@@ -76,6 +76,9 @@ A page is a list of semantic blocks with a fixed class contract
 (`.blk-photo`, `.blk-mood`, `.blk-links`, …). A theme is one stylesheet against
 that contract, so a new theme is CSS with no Go changes.
 
+`.blk-photo` is the first block built to this contract: the owner's current
+photo, a matted print under the identity header. The rest are still to come.
+
 Get this wrong early and every new theme becomes a code change, and themes stop
 shipping.
 

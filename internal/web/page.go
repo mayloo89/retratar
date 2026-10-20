@@ -57,6 +57,14 @@ type pageData struct {
 
 	// RandomURL points at /random on the app surface.
 	RandomURL string
+
+	// PhotoURL is the owner's current photo as a same-origin path on this
+	// page's own host, /photo/<key>.jpg, or empty when there is none. It is
+	// never the app-host URL: that one is owner-only and no-store.
+	// PhotoWidth and PhotoHeight are the stored size, for <img width height>.
+	PhotoURL    string
+	PhotoWidth  int
+	PhotoHeight int
 }
 
 // guestbookEntryView is one guestbook entry as page.html renders it. Body is
@@ -108,6 +116,11 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 		OGDescription: ogcard.EmptyStateText,
 		SignURL:       s.Config.BaseURL() + "/sign/" + u.Handle,
 		RandomURL:     s.Config.BaseURL() + "/random",
+	}
+
+	if u.PhotoKey != "" {
+		data.PhotoURL = photoURL(u.PhotoKey)
+		data.PhotoWidth, data.PhotoHeight = u.PhotoWidth, u.PhotoHeight
 	}
 
 	m, err := s.Moods.CurrentMood(r.Context(), u.ID)

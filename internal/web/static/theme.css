@@ -97,6 +97,22 @@ a:focus-visible {
 	overflow-wrap: anywhere;
 }
 
+/* The current photo: a matted print under the name, full width, never cropped. */
+.blk-photo {
+	margin: 12px 12px 0;
+	padding: 8px;
+	background: var(--paper);
+	border: 1px solid var(--rule);
+}
+
+.blk-photo img {
+	display: block;
+	width: 100%;
+	height: auto;
+	box-sizing: border-box;
+	border: 3px double var(--mood-fg);
+}
+
 /* Boxes with title bars. The bars carry the mood colour. */
 .blk-box {
 	margin: 12px;
