@@ -45,6 +45,7 @@ func TestLoadReadsEnvironment(t *testing.T) {
 		"SMTP_USERNAME":    "smtp-user",
 		"SMTP_PASSWORD":    "smtp-pass",
 		"MAIL_FROM":        "noreply@retratar.com.ar",
+		"PHOTOS_DIR":       "/data/photos",
 	}))
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
@@ -102,6 +103,7 @@ func TestValidateRejectsSharedRegistrableDomain(t *testing.T) {
 		SMTPUsername:    "token",
 		SMTPPassword:    "token",
 		MailFrom:        "noreply@retratar.com.ar",
+		PhotosDir:       "/data/photos",
 		ShutdownTimeout: time.Second,
 	}
 
@@ -172,6 +174,7 @@ func TestValidateRejectsPublicAdminAddr(t *testing.T) {
 		SMTPUsername:    "token",
 		SMTPPassword:    "token",
 		MailFrom:        "noreply@retratar.com.ar",
+		PhotosDir:       "/data/photos",
 		ShutdownTimeout: time.Second,
 	}
 
@@ -227,6 +230,7 @@ func TestValidateRequiresSMTPInProduction(t *testing.T) {
 		SMTPUsername:    "token",
 		SMTPPassword:    "token",
 		MailFrom:        "noreply@retratar.com.ar",
+		PhotosDir:       "/data/photos",
 		ShutdownTimeout: time.Second,
 	}
 
@@ -321,6 +325,7 @@ func TestValidateRejectsPublicAddrOutsideProduction(t *testing.T) {
 	prod := base
 	prod.Env = config.EnvProduction
 	prod.MailSender = ""
+	prod.PhotosDir = "/data/photos"
 	prod.Addr = "127.0.0.1:8082"
 	prod.AppHost, prod.PagesHost = "retratar.com.ar", "retrat.ar"
 	prod.DatabaseURL = "postgres://u:p@db.internal:5432/retratar"
@@ -400,6 +405,7 @@ func TestValidateDatabaseURL(t *testing.T) {
 		SMTPUsername:    "token",
 		SMTPPassword:    "token",
 		MailFrom:        "noreply@retratar.com.ar",
+		PhotosDir:       "/data/photos",
 		ShutdownTimeout: time.Second,
 	}
 
@@ -502,6 +508,7 @@ func TestValidateRequiresLoopbackAddrInProduction(t *testing.T) {
 		SMTPUsername:    "token",
 		SMTPPassword:    "token",
 		MailFrom:        "noreply@retratar.com.ar",
+		PhotosDir:       "/data/photos",
 		ShutdownTimeout: time.Second,
 	}
 
@@ -547,6 +554,7 @@ func TestValidateMailSender(t *testing.T) {
 		SMTPUsername:    "token",
 		SMTPPassword:    "token",
 		MailFrom:        "noreply@retratar.com.ar",
+		PhotosDir:       "/data/photos",
 		ShutdownTimeout: time.Second,
 	}
 
@@ -599,5 +607,61 @@ func TestLoadRefusesServerThatLostEnv(t *testing.T) {
 	}))
 	if !errors.Is(err, config.ErrInvalidConfig) {
 		t.Fatalf("Load() error = %v, want ErrInvalidConfig", err)
+	}
+}
+
+func TestPhotosDir(t *testing.T) {
+	t.Parallel()
+
+	prod := map[string]string{
+		"ENV":           "production",
+		"DATABASE_URL":  "postgres://u:p@db.internal:5432/retratar?sslmode=require",
+		"ADDR":          "127.0.0.1:8082",
+		"APP_HOST":      "retratar.com.ar",
+		"PAGES_HOST":    "retrat.ar",
+		"SMTP_HOST":     "smtp-relay.brevo.com",
+		"SMTP_PORT":     "587",
+		"SMTP_USERNAME": "user",
+		"SMTP_PASSWORD": "pass",
+		"MAIL_FROM":     "noreply@retratar.com.ar",
+	}
+	with := func(dir string) map[string]string {
+		m := map[string]string{"PHOTOS_DIR": dir}
+		for k, v := range prod {
+			m[k] = v
+		}
+		return m
+	}
+
+	t.Run("development defaults", func(t *testing.T) {
+		t.Parallel()
+		cfg, err := config.Load(env(map[string]string{"MAIL_SENDER": "log"}))
+		if err != nil {
+			t.Fatalf("Load() error = %v, want nil", err)
+		}
+		if cfg.PhotosDir != "var/photos" {
+			t.Errorf("PhotosDir = %q, want %q", cfg.PhotosDir, "var/photos")
+		}
+	})
+
+	t.Run("production absolute", func(t *testing.T) {
+		t.Parallel()
+		cfg, err := config.Load(env(with("/data/photos")))
+		if err != nil {
+			t.Fatalf("Load() error = %v, want nil", err)
+		}
+		if cfg.PhotosDir != "/data/photos" {
+			t.Errorf("PhotosDir = %q, want %q", cfg.PhotosDir, "/data/photos")
+		}
+	})
+
+	for name, dir := range map[string]string{"production unset": "", "production relative": "var/photos"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, err := config.Load(env(with(dir)))
+			if !errors.Is(err, config.ErrInvalidConfig) || !strings.Contains(err.Error(), "PHOTOS_DIR") {
+				t.Fatalf("Load() error = %v, want ErrInvalidConfig naming PHOTOS_DIR", err)
+			}
+		})
 	}
 }

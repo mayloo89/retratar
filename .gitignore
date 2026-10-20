@@ -17,6 +17,7 @@ retratar
 coverage.*
 
 # Local data
+/var/
 *.db
 *.sqlite
 /tmp/
