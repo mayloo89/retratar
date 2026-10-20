@@ -116,6 +116,13 @@ func TestSetPhoto_UploadCommittedWhileWaitingIsRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = tx.Rollback(t.Context()) }()
+	// Tests are isolated by schema inside one database, so another parallel
+	// test can also be waiting on a lock. Wait for a backend blocked by this
+	// transaction's own pid, and nothing else.
+	var holderPID int
+	if err = tx.QueryRow(t.Context(), `SELECT pg_backend_pid()`).Scan(&holderPID); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = tx.Exec(t.Context(), `SELECT 1 FROM users WHERE id = $1 FOR UPDATE`, u.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -140,8 +147,7 @@ func TestSetPhoto_UploadCommittedWhileWaitingIsRefused(t *testing.T) {
 	for {
 		var waiting int
 		err = pool.QueryRow(t.Context(),
-			`SELECT count(*) FROM pg_stat_activity
-			  WHERE datname = current_database() AND wait_event_type = 'Lock' AND pid <> pg_backend_pid()`).Scan(&waiting)
+			`SELECT count(*) FROM pg_stat_activity WHERE $1 = ANY (pg_blocking_pids(pid))`, holderPID).Scan(&waiting)
 		if err != nil {
 			t.Fatal(err)
 		}
