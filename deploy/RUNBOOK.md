@@ -97,6 +97,21 @@ zone settings:
     curl -sS -i -H 'Host: example.retrat.ar' http://127.0.0.1:8082/ | head -1
     curl -sSk -i -H 'Host: example.retrat.ar' https://127.0.0.1/ | head -1
 
+## Photos
+
+Uploaded photos are files in the `photos` Docker volume, mounted at
+`/data/photos` in the app container. The database holds only each photo's key.
+
+Back the volume up with:
+
+    docker run --rm -v retratar_photos:/p:ro -v "$PWD":/b alpine tar czf /b/photos-$(date +%F).tgz -C /p .
+
+Only allowlisted accounts can upload. Allow an account with SQL; there is no UI
+for it:
+
+    docker exec <postgres container> psql -U retratar -d retratar \
+      -c "UPDATE users SET can_upload_photos = true WHERE handle = '<handle>';"
+
 ## Traps
 
 Each of these has already been paid for once.

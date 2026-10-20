@@ -124,6 +124,11 @@ services:
     platform: linux/arm64
     network_mode: host
     env_file: retratar.env
+    volumes:
+      # Uploaded photos (PHOTOS_DIR=/data/photos). Back this volume up; see
+      # RUNBOOK.md. The Dockerfile creates /data/photos owned by the nonroot
+      # user, which a new volume inherits.
+      - photos:/data/photos
     depends_on:
       postgres:
         condition: service_healthy
@@ -131,3 +136,4 @@ services:
 
 volumes:
   pgdata:
+  photos:
