@@ -221,9 +221,12 @@ type SetPhotoParams struct {
 // read of the old key, so two uploads racing cannot both win and the caller
 // always learns which file to delete.
 //
-// The subselect locks the row (FOR UPDATE) so a second concurrent SetPhoto
-// waits, then re-evaluates the WHERE against the first one's photo_uploaded_at
-// and matches nothing. No rows means "not allowed": not allowlisted, or already
+// Two uploads racing cannot both win: the loser's WHERE is re-checked against
+// the winner's committed photo_uploaded_at and matches nothing. Postgres does
+// that re-check on an UPDATE anyway; FOR UPDATE is not what makes it work. What
+// FOR UPDATE buys is that old_key, read in the subselect, is the latest value
+// once the row lock is granted, so the caller deletes the file the database
+// really replaced. No rows means "not allowed": not allowlisted, or already
 // uploaded since @day_start.
 func (q *Queries) SetPhoto(ctx context.Context, arg SetPhotoParams) (string, error) {
 	row := q.db.QueryRow(ctx, setPhoto,

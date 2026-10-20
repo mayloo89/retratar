@@ -2,7 +2,6 @@ package user_test
 
 import (
 	"errors"
-	"sync"
 	"testing"
 	"time"
 
@@ -98,35 +97,81 @@ func TestSetPhoto_NotAllowlisted(t *testing.T) {
 	}
 }
 
-func TestSetPhoto_ConcurrentUploadsOneWins(t *testing.T) {
+// TestSetPhoto_UploadCommittedWhileWaitingIsRefused forces the interleaving: a
+// first upload holds the row lock, a second SetPhoto is started and is
+// confirmed to be blocked on that lock, and only then does the first commit.
+// It shows that only one upload wins. It does not show that FOR UPDATE is
+// needed for that: Postgres re-checks an UPDATE's WHERE on the updated row
+// anyway. FOR UPDATE is what makes the returned old key the latest one.
+func TestSetPhoto_UploadCommittedWhileWaitingIsRefused(t *testing.T) {
 	t.Parallel()
 	pool := testdb.New(t)
 	svc := user.NewService(pool)
 	u := photoUser(t, pool, svc, true)
 
-	keys := []string{keyA, keyB, keyC}
-	errs := make([]error, len(keys))
-	var wg sync.WaitGroup
-	for i, k := range keys {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			_, errs[i] = svc.SetPhoto(t.Context(), u.ID, k, 10, 10, day1)
-		}()
+	// Transaction 1: lock the row and write what a committed first upload
+	// would have written.
+	tx, err := pool.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
 	}
-	wg.Wait()
+	defer func() { _ = tx.Rollback(t.Context()) }()
+	if _, err = tx.Exec(t.Context(), `SELECT 1 FROM users WHERE id = $1 FOR UPDATE`, u.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(t.Context(),
+		`UPDATE users SET photo_key = $2, photo_width = 10, photo_height = 10, photo_uploaded_at = now() WHERE id = $1`,
+		u.ID, keyA); err != nil {
+		t.Fatal(err)
+	}
 
-	wins := 0
-	for _, err := range errs {
-		switch {
-		case err == nil:
-			wins++
-		case !errors.Is(err, user.ErrPhotoNotAllowed):
-			t.Errorf("SetPhoto() error = %v, want nil or ErrPhotoNotAllowed", err)
-		}
+	type result struct {
+		old string
+		err error
 	}
-	if wins != 1 {
-		t.Errorf("%d concurrent uploads succeeded, want exactly 1", wins)
+	done := make(chan result, 1)
+	go func() {
+		old, setErr := svc.SetPhoto(t.Context(), u.ID, keyB, 10, 10, day1)
+		done <- result{old, setErr}
+	}()
+
+	// Wait until SetPhoto is really blocked on the row lock.
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		var waiting int
+		err = pool.QueryRow(t.Context(),
+			`SELECT count(*) FROM pg_stat_activity
+			  WHERE datname = current_database() AND wait_event_type = 'Lock' AND pid <> pg_backend_pid()`).Scan(&waiting)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if waiting > 0 {
+			break
+		}
+		select {
+		case r := <-done:
+			t.Fatalf("SetPhoto returned %q, %v before the lock was released", r.old, r.err)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("SetPhoto never blocked on the row lock")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if err = tx.Commit(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	r := <-done
+	if !errors.Is(r.err, user.ErrPhotoNotAllowed) {
+		t.Fatalf("SetPhoto() = %q, %v, want ErrPhotoNotAllowed", r.old, r.err)
+	}
+	got, err := svc.GetByID(t.Context(), u.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.PhotoKey != keyA {
+		t.Errorf("PhotoKey = %q, want the first upload's %q", got.PhotoKey, keyA)
 	}
 }
 
