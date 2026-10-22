@@ -48,6 +48,8 @@ func TestNormaliseNote(t *testing.T) {
 		{"61 runes is rejected", strings.Repeat("é", 61), "", mood.ErrInvalidNote},
 		{"embedded newline is rejected", "todo\nbien", "", mood.ErrInvalidNote},
 		{"embedded tab is rejected", "todo\tbien", "", mood.ErrInvalidNote},
+		{"right-to-left override is rejected", "hola\u202Echau", "", mood.ErrInvalidNote},
+		{"invalid UTF-8 is rejected", "\xff", "", mood.ErrInvalidNote},
 	}
 
 	for _, tt := range tests {

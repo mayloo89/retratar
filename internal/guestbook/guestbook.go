@@ -4,10 +4,11 @@ package guestbook
 import (
 	"strings"
 	"time"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+
+	"github.com/mayloo89/retratar/internal/textcheck"
 )
 
 // PageLimit is how many entries a public page shows.
@@ -39,10 +40,8 @@ func NormaliseBody(raw string) (string, error) {
 	if n == 0 || n > maxBodyRunes {
 		return "", ErrInvalidBody
 	}
-	for _, r := range body {
-		if r != '\n' && unicode.IsControl(r) {
-			return "", ErrInvalidBody
-		}
+	if !textcheck.Block(body) {
+		return "", ErrInvalidBody
 	}
 	return body, nil
 }

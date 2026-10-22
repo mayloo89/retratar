@@ -8,10 +8,11 @@ package mood
 import (
 	"strings"
 	"time"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+
+	"github.com/mayloo89/retratar/internal/textcheck"
 )
 
 // Key is one of the fixed mood vocabulary. It is never built from user input
@@ -93,12 +94,10 @@ func NormaliseNote(raw string) (string, error) {
 		return "", ErrInvalidNote
 	}
 	// A note is an away-message line, not a message: rejecting control
-	// characters (line breaks included) keeps it to one line wherever it is
+	// characters (line breaks included) (textcheck.Line) keeps it to one line wherever it is
 	// rendered, without the renderer having to strip anything itself.
-	for _, r := range trimmed {
-		if unicode.IsControl(r) {
-			return "", ErrInvalidNote
-		}
+	if !textcheck.Line(trimmed) {
+		return "", ErrInvalidNote
 	}
 	return trimmed, nil
 }
