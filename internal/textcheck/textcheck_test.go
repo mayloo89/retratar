@@ -22,18 +22,18 @@ func TestLineAndBlock(t *testing.T) {
 		{"nul", "hola\x00chau", false, false},
 		{"invalid utf-8", "\xff", false, false},
 		{"invalid utf-8 after valid text", "hola\xc3", false, false},
-		{"U+202A", "a‪b", false, false},
-		{"U+202E", "a‮b", false, false},
-		{"U+2066", "a⁦b", false, false},
-		{"U+2069", "a⁩b", false, false},
-		{"U+200E", "a‎b", false, false},
-		{"U+200F", "a‏b", false, false},
-		{"U+2028", "a b", false, false},
-		{"U+2029", "a b", false, false},
+		{"U+202A", "a\u202ab", false, false},
+		{"U+202E", "a\u202eb", false, false},
+		{"U+2066", "a\u2066b", false, false},
+		{"U+2069", "a\u2069b", false, false},
+		{"U+200E", "a\u200eb", false, false},
+		{"U+200F", "a\u200fb", false, false},
+		{"U+2028", "a\u2028b", false, false},
+		{"U+2029", "a\u2029b", false, false},
 		{"just below U+202A", "a\u2027b", true, true},
 		{"just above U+202E", "a b", true, true},
 		{"just below U+2066", "a⁥b", true, true},
-		{"just above U+2069", "a⁪b", true, true},
+		{"just above U+2069", "a\u206ab", true, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
