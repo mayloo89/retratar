@@ -97,6 +97,10 @@ zone settings:
     curl -sS -i -H 'Host: example.retrat.ar' http://127.0.0.1:8082/ | head -1
     curl -sSk -i -H 'Host: example.retrat.ar' https://127.0.0.1/ | head -1
 
+## Log rotation
+
+Container logs rotate (`logging:` in `docker-compose.yml`, 5 x 10 MB per service). The setting applies when a container is **recreated** (`up -d`), not on a plain restart.
+
 ## Photos
 
 Uploaded photos are files in the `photos` Docker volume, mounted at
