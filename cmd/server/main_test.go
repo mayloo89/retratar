@@ -1,16 +1,20 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"log/slog"
+	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/mayloo89/retratar/internal/config"
 	"github.com/mayloo89/retratar/internal/mail"
+	"github.com/mayloo89/retratar/internal/testdb"
 )
 
 // requireDatabaseURL skips locally when no database is configured, and fails
@@ -59,6 +63,44 @@ func TestRunStartsAndShutsDown(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("run() did not return after context cancellation")
+	}
+}
+
+// TestStatsFlag proves -stats prints the report and returns, instead of
+// starting the listeners: a run that started serving would block until the
+// timeout below and report ctx's deadline.
+func TestStatsFlag(t *testing.T) {
+	// The report reads real tables, so point run at a migrated schema of its
+	// own: the shared public schema is not migrated in CI.
+	pool := testdb.New(t)
+	u, err := url.Parse(requireDatabaseURL(t))
+	if err != nil {
+		t.Fatalf("parse DATABASE_URL: %v", err)
+	}
+	q := u.Query()
+	q.Set("search_path", pool.Config().ConnConfig.RuntimeParams["search_path"])
+	u.RawQuery = q.Encode()
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	getenv := envFunc(map[string]string{
+		"ADDR":         "127.0.0.1:0",
+		"DATABASE_URL": u.String(),
+		"MAIL_SENDER":  "log",
+	})
+
+	var out bytes.Buffer
+	if err = run(ctx, []string{"-stats"}, getenv, &out); err != nil {
+		t.Fatalf("run(-stats) error = %v, want nil", err)
+	}
+	if ctx.Err() != nil {
+		t.Fatalf("run(-stats) did not return before the deadline; it should not serve")
+	}
+	if !strings.HasPrefix(out.String(), "retratar stats at ") {
+		t.Errorf("output = %q, want it to start with the stats heading", out.String())
+	}
+	if strings.Contains(out.String(), "listening") {
+		t.Errorf("output mentions listening: %q", out.String())
 	}
 }
 

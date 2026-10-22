@@ -23,6 +23,7 @@ import (
 	"github.com/mayloo89/retratar/internal/mood"
 	"github.com/mayloo89/retratar/internal/photostore"
 	"github.com/mayloo89/retratar/internal/session"
+	"github.com/mayloo89/retratar/internal/stats"
 	"github.com/mayloo89/retratar/internal/store"
 	"github.com/mayloo89/retratar/internal/user"
 	"github.com/mayloo89/retratar/internal/web"
@@ -63,6 +64,7 @@ func run(ctx context.Context, args []string, getenv config.Getenv, stdout io.Wri
 	flags := flag.NewFlagSet("server", flag.ContinueOnError)
 	flags.SetOutput(stdout)
 	migrate := flags.Bool("migrate", false, "apply pending database migrations and exit")
+	printStats := flags.Bool("stats", false, "print aggregate usage numbers and exit")
 	if err := flags.Parse(args); err != nil {
 		return fmt.Errorf("parse flags: %w", err)
 	}
@@ -76,6 +78,10 @@ func run(ctx context.Context, args []string, getenv config.Getenv, stdout io.Wri
 
 	if *migrate {
 		return applyMigrations(ctx, cfg, logger)
+	}
+
+	if *printStats {
+		return writeStats(ctx, cfg, time.Now(), stdout)
 	}
 
 	logger.Info("starting",
@@ -142,6 +148,26 @@ func applyMigrations(ctx context.Context, cfg config.Config, logger *slog.Logger
 	defer pool.Close()
 
 	return store.Migrate(ctx, pool, logger)
+}
+
+// writeStats prints the operator's numbers and returns. It is the whole of the
+// -stats subcommand: like -migrate it connects, does its work and exits without
+// starting a server.
+func writeStats(ctx context.Context, cfg config.Config, now time.Time, w io.Writer) error {
+	pool, err := store.Open(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return fmt.Errorf("open database: %w", err)
+	}
+	defer pool.Close()
+
+	report, err := stats.Collect(ctx, store.New(pool), now)
+	if err != nil {
+		return err
+	}
+	if _, err := report.WriteTo(w); err != nil {
+		return fmt.Errorf("write stats: %w", err)
+	}
+	return nil
 }
 
 // newHTTPServer applies the timeouts every server needs. An unbounded read or

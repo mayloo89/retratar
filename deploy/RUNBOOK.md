@@ -101,6 +101,14 @@ zone settings:
 
 Container logs rotate (`logging:` in `docker-compose.yml`, 5 x 10 MB per service). The setting applies when a container is **recreated** (`up -d`), not on a plain restart.
 
+## Stats
+
+Print aggregate numbers (accounts, mood changes, guestbook, photos) from the database:
+
+    docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env run --rm app -stats
+
+The output contains no personal data: no emails, handles, notes or entry text.
+
 ## Photos
 
 Uploaded photos are files in the `photos` Docker volume, mounted at
