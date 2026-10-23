@@ -9,6 +9,11 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type DeletedHandle struct {
+	Handle    string
+	DeletedAt pgtype.Timestamptz
+}
+
 type GuestbookEntry struct {
 	ID           uuid.UUID
 	PageUserID   uuid.UUID
@@ -65,4 +70,5 @@ type User struct {
 	PhotoHeight     *int32
 	PhotoUploadedAt pgtype.Timestamptz
 	CanUploadPhotos bool
+	TermsAcceptedAt pgtype.Timestamptz
 }

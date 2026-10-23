@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // Environment names the deployment the process is running in. It gates
@@ -74,6 +75,13 @@ type Config struct {
 	// relative directory under the working directory.
 	PhotosDir string
 
+	// OperatorName and ContactEmail say who is responsible for the service.
+	// They are shown on /privacy and /terms, and come from configuration so
+	// that no real name or address lives in the repository. Required in
+	// production; development falls back to placeholders.
+	OperatorName string
+	ContactEmail string
+
 	ShutdownTimeout time.Duration
 }
 
@@ -119,6 +127,8 @@ func Load(getenv Getenv) (Config, error) {
 		MailFrom:        getenv("MAIL_FROM"),
 		MailSender:      getenv("MAIL_SENDER"),
 		PhotosDir:       photosDir(getenv),
+		OperatorName:    legalValue(getenv, "OPERATOR_NAME", devOperatorName),
+		ContactEmail:    legalValue(getenv, "CONTACT_EMAIL", devContactEmail),
 		ShutdownTimeout: shutdown,
 	}
 
@@ -142,6 +152,37 @@ func photosDir(getenv Getenv) string {
 		return ""
 	}
 	return defaultPhotosDir
+}
+
+// Placeholders for the operator's name and contact email, so local pages render
+// without setup. Production never gets them: [Config.Validate] requires real
+// values there.
+const (
+	devOperatorName = "Operador de prueba"
+	devContactEmail = "contacto@example.com"
+)
+
+// legalValue reads key. Only development gets a fallback: in production an
+// unset value stays empty so [Config.Validate] can refuse it.
+func legalValue(getenv Getenv, key, devDefault string) string {
+	if v := strings.TrimSpace(getenv(key)); v != "" {
+		return v
+	}
+	if Environment(getenv("ENV")) == EnvProduction {
+		return ""
+	}
+	return devDefault
+}
+
+// plausibleContactEmail reports whether s splits on its single @ into a
+// non-empty local part and a non-empty domain, with no whitespace. It is a
+// typo check, not address validation.
+func plausibleContactEmail(s string) bool {
+	if strings.IndexFunc(s, unicode.IsSpace) >= 0 {
+		return false
+	}
+	local, domain, ok := strings.Cut(s, "@")
+	return ok && local != "" && domain != "" && !strings.Contains(domain, "@")
 }
 
 // IsProduction reports whether the process runs in production. Callers use it
@@ -213,6 +254,20 @@ func (c Config) Validate() error {
 		} else if !filepath.IsAbs(c.PhotosDir) {
 			errs = append(errs, fmt.Errorf("%w: PHOTOS_DIR=%q must be an absolute path in production",
 				ErrInvalidConfig, c.PhotosDir))
+		}
+		if c.OperatorName == "" {
+			errs = append(errs, fmt.Errorf(
+				"%w: OPERATOR_NAME is required in production: the privacy policy must name who is responsible",
+				ErrInvalidConfig))
+		}
+		if c.ContactEmail == "" {
+			errs = append(errs, fmt.Errorf(
+				"%w: CONTACT_EMAIL is required in production: the privacy policy must say how to reach the person responsible",
+				ErrInvalidConfig))
+		} else if !plausibleContactEmail(c.ContactEmail) {
+			errs = append(errs, fmt.Errorf(
+				"%w: CONTACT_EMAIL must look like name@domain",
+				ErrInvalidConfig))
 		}
 		if c.MailSender == "log" {
 			errs = append(errs, fmt.Errorf(

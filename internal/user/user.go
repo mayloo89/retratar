@@ -307,28 +307,108 @@ func (s *Service) RandomHandle(ctx context.Context, exclude *uuid.UUID) (string,
 	return *handle, nil
 }
 
+// DeletedHandleReservation is how long a deleted account's handle stays
+// unavailable, so nobody can take the address of a page that was just deleted
+// and pass as its owner.
+const DeletedHandleReservation = 90 * 24 * time.Hour
+
 // ClaimHandle gives an account its handle, moving it from
-// [StatePendingHandle] to [StateActive]. A handle is claimed once: an account
-// that already has one gets [ErrHandleAlreadySet], and a handle another
-// account already holds gets [ErrHandleTaken] — the unique index on
-// lower(handle) is what actually decides the second case, this only
-// translates the conflict it raises.
-func (s *Service) ClaimHandle(ctx context.Context, id uuid.UUID, handle string) (User, error) {
+// [StatePendingHandle] to [StateActive], and records now as the time it
+// accepted the terms. A handle is claimed once: an account that already has
+// one gets [ErrHandleAlreadySet], and a handle another account already holds
+// gets [ErrHandleTaken] — the unique index on lower(handle) is what actually
+// decides the second case, this only translates the conflict it raises.
+//
+// A handle of a deleted account, still inside [DeletedHandleReservation]
+// counted back from now, is [ErrHandleTaken] as well. The claim statement
+// itself checks it, so there is no gap between the check and the claim.
+//
+// now must come from the application's clock: it is stored as the acceptance
+// time and it is what the reservation is measured against.
+func (s *Service) ClaimHandle(ctx context.Context, id uuid.UUID, handle string, now time.Time) (User, error) {
 	if !ValidHandle(handle) {
 		return User{}, ErrInvalidHandle
 	}
 
-	row, err := s.queries.ClaimHandle(ctx, store.ClaimHandleParams{ID: id, Handle: &handle})
+	row, err := s.queries.ClaimHandle(ctx, store.ClaimHandleParams{
+		ID:             id,
+		Handle:         &handle,
+		AcceptedAt:     pgtype.Timestamptz{Time: now, Valid: true},
+		ReserveSeconds: DeletedHandleReservation.Seconds(),
+	})
 	if err != nil {
 		if isUniqueViolation(err) {
 			return User{}, ErrHandleTaken
 		}
 		if errors.Is(err, pgx.ErrNoRows) {
-			return User{}, ErrHandleAlreadySet
+			return User{}, s.claimRefusal(ctx, id)
 		}
 		return User{}, fmt.Errorf("claim handle: %w", err)
 	}
 	return fromRow(row), nil
+}
+
+// claimRefusal explains why the claim statement matched no row. The statement
+// has already decided; this only picks the error. An account that has a handle
+// was refused for that reason, and one that does not can only have been refused
+// because the handle is reserved.
+func (s *Service) claimRefusal(ctx context.Context, id uuid.UUID) error {
+	u, err := s.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if u.Handle != "" {
+		return ErrHandleAlreadySet
+	}
+	return ErrHandleTaken
+}
+
+// DeleteAccount deletes the account and everything that belongs to it, and
+// returns the key of its photo file, or "" if it had none. Deleting the file is
+// the caller's job, after this returns: if the transaction fails the account
+// still exists, with its photo.
+//
+// One transaction does all of it. The handle, if the account has one, is
+// reserved for [DeletedHandleReservation] from now (the application's clock);
+// the login tokens go by email, because login_tokens has no foreign key to
+// users; and deleting the user takes the sessions, moods, mood history and
+// guestbook entries (as owner and as author) by cascade.
+func (s *Service) DeleteAccount(ctx context.Context, id uuid.UUID, now time.Time) (string, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return "", fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	q := s.queries.WithTx(tx)
+
+	row, err := q.LockUserForDelete(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", ErrUserNotFound
+		}
+		return "", fmt.Errorf("lock user: %w", err)
+	}
+	u := fromRow(row)
+
+	if u.Handle != "" {
+		if err = q.ReserveDeletedHandle(ctx, store.ReserveDeletedHandleParams{
+			Handle:    u.Handle,
+			DeletedAt: pgtype.Timestamptz{Time: now, Valid: true},
+		}); err != nil {
+			return "", fmt.Errorf("reserve handle: %w", err)
+		}
+	}
+	if err = q.DeleteLoginTokensForEmail(ctx, u.Email); err != nil {
+		return "", fmt.Errorf("delete login tokens: %w", err)
+	}
+	if _, err = q.DeleteUser(ctx, id); err != nil {
+		return "", fmt.Errorf("delete user: %w", err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return "", fmt.Errorf("commit: %w", err)
+	}
+	return u.PhotoKey, nil
 }
 
 // SetDisplayName sets or clears the account's display name. raw goes through
@@ -530,6 +610,18 @@ func (s *Service) PurgeExpiredLoginTokens(ctx context.Context, olderThan time.Du
 	n, err := s.queries.PurgeLoginTokens(ctx, olderThan.Seconds())
 	if err != nil {
 		return 0, fmt.Errorf("purge login tokens: %w", err)
+	}
+	return n, nil
+}
+
+// PurgeDeletedHandles drops handle reservations older than olderThan, which
+// the caller sets to [DeletedHandleReservation], and returns how many it
+// removed. A reservation past its time is already ignored when a handle is
+// claimed; this only keeps the table small.
+func (s *Service) PurgeDeletedHandles(ctx context.Context, olderThan time.Duration) (int64, error) {
+	n, err := s.queries.PurgeDeletedHandles(ctx, olderThan.Seconds())
+	if err != nil {
+		return 0, fmt.Errorf("purge deleted handles: %w", err)
 	}
 	return n, nil
 }

@@ -75,6 +75,17 @@ func (q *Queries) CreateLoginToken(ctx context.Context, arg CreateLoginTokenPara
 	return err
 }
 
+const deleteLoginTokensForEmail = `-- name: DeleteLoginTokensForEmail :exec
+DELETE FROM login_tokens WHERE lower(email) = lower($1)
+`
+
+// login_tokens has no foreign key to users, so deleting an account does not
+// take its tokens with it. Without this the address outlives the account.
+func (q *Queries) DeleteLoginTokensForEmail(ctx context.Context, email string) error {
+	_, err := q.db.Exec(ctx, deleteLoginTokensForEmail, email)
+	return err
+}
+
 const invalidateLoginTokensForEmail = `-- name: InvalidateLoginTokensForEmail :exec
 UPDATE login_tokens
 SET    consumed_at = now()

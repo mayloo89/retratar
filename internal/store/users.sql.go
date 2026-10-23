@@ -14,14 +14,21 @@ import (
 
 const claimHandle = `-- name: ClaimHandle :one
 UPDATE users
-SET handle = $1, state = 'active'
-WHERE id = $2 AND handle IS NULL
-RETURNING id, email, handle, state, tier, locale, created_at, display_name, photo_key, photo_width, photo_height, photo_uploaded_at, can_upload_photos
+SET handle = $1, state = 'active', terms_accepted_at = $2
+WHERE id = $3 AND handle IS NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM deleted_handles d
+    WHERE d.handle = lower($1::text)
+      AND d.deleted_at > $2::timestamptz - make_interval(secs => $4::double precision)
+  )
+RETURNING id, email, handle, state, tier, locale, created_at, display_name, photo_key, photo_width, photo_height, photo_uploaded_at, can_upload_photos, terms_accepted_at
 `
 
 type ClaimHandleParams struct {
-	Handle *string
-	ID     uuid.UUID
+	Handle         *string
+	AcceptedAt     pgtype.Timestamptz
+	ID             uuid.UUID
+	ReserveSeconds float64
 }
 
 // The WHERE guards against re-claiming: once handle is set, this matches no
@@ -29,8 +36,22 @@ type ClaimHandleParams struct {
 // already produces for "this cannot proceed." A second, different user
 // claiming the same handle instead hits users_handle_key and fails as a
 // unique violation, which the caller distinguishes from "already set."
+//
+// A handle held in deleted_handles also matches no row. The reservation is
+// checked here, in the claim itself, and not by a read beforehand: a separate
+// "is it reserved?" read would be a race. The caller tells "reserved" from
+// "already set" by looking at the account afterwards.
+//
+// @accepted_at is the application's clock, and one clock does both jobs: it is
+// stamped as terms_accepted_at and it is the "now" the reservation is measured
+// from. deleted_handles.handle is lower case, so the comparison is too.
 func (q *Queries) ClaimHandle(ctx context.Context, arg ClaimHandleParams) (User, error) {
-	row := q.db.QueryRow(ctx, claimHandle, arg.Handle, arg.ID)
+	row := q.db.QueryRow(ctx, claimHandle,
+		arg.Handle,
+		arg.AcceptedAt,
+		arg.ID,
+		arg.ReserveSeconds,
+	)
 	var i User
 	err := row.Scan(
 		&i.ID,
@@ -46,12 +67,27 @@ func (q *Queries) ClaimHandle(ctx context.Context, arg ClaimHandleParams) (User,
 		&i.PhotoHeight,
 		&i.PhotoUploadedAt,
 		&i.CanUploadPhotos,
+		&i.TermsAcceptedAt,
 	)
 	return i, err
 }
 
+const deleteUser = `-- name: DeleteUser :execrows
+DELETE FROM users WHERE id = $1
+`
+
+// Sessions, moods, mood history and guestbook entries (as page owner and as
+// author) go with the account by ON DELETE CASCADE.
+func (q *Queries) DeleteUser(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteUser, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getUserByHandle = `-- name: GetUserByHandle :one
-SELECT id, email, handle, state, tier, locale, created_at, display_name, photo_key, photo_width, photo_height, photo_uploaded_at, can_upload_photos FROM users WHERE lower(handle) = lower($1)
+SELECT id, email, handle, state, tier, locale, created_at, display_name, photo_key, photo_width, photo_height, photo_uploaded_at, can_upload_photos, terms_accepted_at FROM users WHERE lower(handle) = lower($1)
 `
 
 func (q *Queries) GetUserByHandle(ctx context.Context, handle string) (User, error) {
@@ -71,12 +107,13 @@ func (q *Queries) GetUserByHandle(ctx context.Context, handle string) (User, err
 		&i.PhotoHeight,
 		&i.PhotoUploadedAt,
 		&i.CanUploadPhotos,
+		&i.TermsAcceptedAt,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, handle, state, tier, locale, created_at, display_name, photo_key, photo_width, photo_height, photo_uploaded_at, can_upload_photos FROM users WHERE id = $1
+SELECT id, email, handle, state, tier, locale, created_at, display_name, photo_key, photo_width, photo_height, photo_uploaded_at, can_upload_photos, terms_accepted_at FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
@@ -96,12 +133,13 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.PhotoHeight,
 		&i.PhotoUploadedAt,
 		&i.CanUploadPhotos,
+		&i.TermsAcceptedAt,
 	)
 	return i, err
 }
 
 const getUserByPhotoKey = `-- name: GetUserByPhotoKey :one
-SELECT id, email, handle, state, tier, locale, created_at, display_name, photo_key, photo_width, photo_height, photo_uploaded_at, can_upload_photos FROM users WHERE photo_key = $1
+SELECT id, email, handle, state, tier, locale, created_at, display_name, photo_key, photo_width, photo_height, photo_uploaded_at, can_upload_photos, terms_accepted_at FROM users WHERE photo_key = $1
 `
 
 func (q *Queries) GetUserByPhotoKey(ctx context.Context, photoKey *string) (User, error) {
@@ -121,6 +159,36 @@ func (q *Queries) GetUserByPhotoKey(ctx context.Context, photoKey *string) (User
 		&i.PhotoHeight,
 		&i.PhotoUploadedAt,
 		&i.CanUploadPhotos,
+		&i.TermsAcceptedAt,
+	)
+	return i, err
+}
+
+const lockUserForDelete = `-- name: LockUserForDelete :one
+SELECT id, email, handle, state, tier, locale, created_at, display_name, photo_key, photo_width, photo_height, photo_uploaded_at, can_upload_photos, terms_accepted_at FROM users WHERE id = $1 FOR UPDATE
+`
+
+// Reads the account and holds its row until the transaction ends, so a photo
+// uploaded at the same moment cannot change photo_key between this read and
+// DeleteUser: the caller deletes the file that was really there.
+func (q *Queries) LockUserForDelete(ctx context.Context, id uuid.UUID) (User, error) {
+	row := q.db.QueryRow(ctx, lockUserForDelete, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Handle,
+		&i.State,
+		&i.Tier,
+		&i.Locale,
+		&i.CreatedAt,
+		&i.DisplayName,
+		&i.PhotoKey,
+		&i.PhotoWidth,
+		&i.PhotoHeight,
+		&i.PhotoUploadedAt,
+		&i.CanUploadPhotos,
+		&i.TermsAcceptedAt,
 	)
 	return i, err
 }
@@ -165,7 +233,7 @@ const setDisplayName = `-- name: SetDisplayName :one
 UPDATE users
 SET display_name = $1
 WHERE id = $2
-RETURNING id, email, handle, state, tier, locale, created_at, display_name, photo_key, photo_width, photo_height, photo_uploaded_at, can_upload_photos
+RETURNING id, email, handle, state, tier, locale, created_at, display_name, photo_key, photo_width, photo_height, photo_uploaded_at, can_upload_photos, terms_accepted_at
 `
 
 type SetDisplayNameParams struct {
@@ -191,6 +259,7 @@ func (q *Queries) SetDisplayName(ctx context.Context, arg SetDisplayNameParams) 
 		&i.PhotoHeight,
 		&i.PhotoUploadedAt,
 		&i.CanUploadPhotos,
+		&i.TermsAcceptedAt,
 	)
 	return i, err
 }
@@ -252,7 +321,7 @@ const upsertUserByEmail = `-- name: UpsertUserByEmail :one
 INSERT INTO users (email)
 VALUES ($1)
 ON CONFLICT (lower(email)) DO UPDATE SET email = users.email
-RETURNING id, email, handle, state, tier, locale, created_at, display_name, photo_key, photo_width, photo_height, photo_uploaded_at, can_upload_photos
+RETURNING id, email, handle, state, tier, locale, created_at, display_name, photo_key, photo_width, photo_height, photo_uploaded_at, can_upload_photos, terms_accepted_at
 `
 
 // Returns the account for an email, creating it on first use. Login is a signup
@@ -279,6 +348,7 @@ func (q *Queries) UpsertUserByEmail(ctx context.Context, email string) (User, er
 		&i.PhotoHeight,
 		&i.PhotoUploadedAt,
 		&i.CanUploadPhotos,
+		&i.TermsAcceptedAt,
 	)
 	return i, err
 }

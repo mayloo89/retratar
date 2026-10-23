@@ -18,7 +18,7 @@ func TestMoodSubmit_SetsAndShowsMood(t *testing.T) {
 
 	sessionCookie := completeLogin(t, h, host, sender, srv.Config.BaseURL(), "ana@example.com")
 	request(t, h, http.MethodPost, host, "/handle",
-		strings.NewReader(url.Values{"handle": {"ana"}}.Encode()), sessionCookie).Body.Close()
+		strings.NewReader(url.Values{"handle": {"ana"}, "adult": {"yes"}}.Encode()), sessionCookie).Body.Close()
 
 	resp := request(t, h, http.MethodPost, host, "/mood",
 		strings.NewReader(url.Values{"mood_key": {"feliz"}, "note": {"todo bien"}}.Encode()), sessionCookie)
@@ -42,7 +42,7 @@ func TestMoodSubmit_RejectsInvalidKey(t *testing.T) {
 
 	sessionCookie := completeLogin(t, h, host, sender, srv.Config.BaseURL(), "ana@example.com")
 	request(t, h, http.MethodPost, host, "/handle",
-		strings.NewReader(url.Values{"handle": {"ana"}}.Encode()), sessionCookie).Body.Close()
+		strings.NewReader(url.Values{"handle": {"ana"}, "adult": {"yes"}}.Encode()), sessionCookie).Body.Close()
 
 	resp := request(t, h, http.MethodPost, host, "/mood",
 		strings.NewReader(url.Values{"mood_key": {"euforico"}}.Encode()), sessionCookie)
@@ -59,7 +59,7 @@ func TestMoodSubmit_RejectsLongNote(t *testing.T) {
 
 	sessionCookie := completeLogin(t, h, host, sender, srv.Config.BaseURL(), "ana@example.com")
 	request(t, h, http.MethodPost, host, "/handle",
-		strings.NewReader(url.Values{"handle": {"ana"}}.Encode()), sessionCookie).Body.Close()
+		strings.NewReader(url.Values{"handle": {"ana"}, "adult": {"yes"}}.Encode()), sessionCookie).Body.Close()
 
 	resp := request(t, h, http.MethodPost, host, "/mood",
 		strings.NewReader(url.Values{"mood_key": {"feliz"}, "note": {strings.Repeat("a", 61)}}.Encode()), sessionCookie)

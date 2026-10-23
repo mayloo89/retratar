@@ -126,7 +126,7 @@ func (e *photoEnv) signUp(t *testing.T, address, handle string, allow bool) *htt
 	t.Helper()
 	c := completeLogin(t, e.h, appHost, e.send, e.srv.Config.BaseURL(), address)
 	request(t, e.h, http.MethodPost, appHost, "/handle",
-		strings.NewReader(url.Values{"handle": {handle}}.Encode()), c).Body.Close()
+		strings.NewReader(url.Values{"handle": {handle}, "adult": {"yes"}}.Encode()), c).Body.Close()
 	if allow {
 		if _, err := e.pool.Exec(t.Context(),
 			`UPDATE users SET can_upload_photos = true WHERE handle = $1`, handle); err != nil {

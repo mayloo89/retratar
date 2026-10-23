@@ -48,9 +48,14 @@ func TestAppTemplatesAreSpanish(t *testing.T) {
 	pages["/handle"] = fetch(http.MethodGet, "/handle", nil, sessionCookie)
 
 	claim := request(t, h, http.MethodPost, host, "/handle",
-		strings.NewReader(url.Values{"handle": {"ana-lucia"}}.Encode()), sessionCookie)
+		strings.NewReader(url.Values{"handle": {"ana-lucia"}, "adult": {"yes"}}.Encode()), sessionCookie)
 	claim.Body.Close() //nolint:errcheck // httptest body close cannot fail
 	pages["/"] = fetch(http.MethodGet, "/", nil, sessionCookie)
+
+	pages["/privacy"] = fetch(http.MethodGet, "/privacy", nil)
+	pages["/terms"] = fetch(http.MethodGet, "/terms", nil)
+	pages["/account/delete"] = fetch(http.MethodGet, "/account/delete", nil, sessionCookie)
+	pages["/account/deleted"] = fetch(http.MethodGet, "/account/deleted", nil)
 
 	if !strings.Contains(pages["confirm"], "Confirmá que sos vos") {
 		t.Errorf("confirm: body is not the confirm page: %q", pages["confirm"])

@@ -41,7 +41,7 @@ func signedInWithHandle(t *testing.T, srv *web.Server, h http.Handler, sender *s
 	t.Helper()
 	sessionCookie := completeLogin(t, h, host, sender, srv.Config.BaseURL(), "ana@example.com")
 	request(t, h, http.MethodPost, host, "/handle",
-		strings.NewReader(url.Values{"handle": {"ana"}}.Encode()), sessionCookie).Body.Close()
+		strings.NewReader(url.Values{"handle": {"ana"}, "adult": {"yes"}}.Encode()), sessionCookie).Body.Close()
 	id, err := srv.Sessions.Lookup(t.Context(), sessionCookie.Value)
 	if err != nil {
 		t.Fatalf("Sessions.Lookup() error = %v", err)
@@ -76,7 +76,7 @@ func TestCrossOriginProtection_RejectsCrossSitePOST(t *testing.T) {
 				t.Errorf("CurrentMood() error = %v, want ErrNoMood: a refused POST /mood must not set a mood", err)
 			}
 
-			post("/handle", url.Values{"handle": {"other"}}, sessionCookie)
+			post("/handle", url.Values{"handle": {"other"}, "adult": {"yes"}}, sessionCookie)
 			if u, err := srv.Users.GetByID(t.Context(), id); err != nil || u.Handle != "ana" {
 				t.Errorf("user = %+v, err = %v, want handle ana unchanged", u, err)
 			}

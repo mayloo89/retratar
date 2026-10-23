@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Borrar tu cuenta · retratar</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header class="top"><a class="mark" href="/">retratar</a>
+<form method="post" action="/logout"><button class="quiet" type="submit">Salir</button></form></header>
+<main class="sheet">
+<h1>Borrar tu cuenta</h1>
+<div class="body">
+<p>Esto borra para siempre tu página, tu estado y su historial, tu foto, las firmas de tu libro de visitas y las firmas que dejaste en libros de otras personas. No se puede deshacer.</p>
+{{with .Handle}}<p>Tu dirección {{.}}.retrat.ar va a quedar reservada 90 días, para que nadie pueda hacerse pasar por vos, y después se libera.</p>
+{{end}}<form method="post" action="/account/delete">
+<div class="field check"><label><input type="checkbox" name="confirm" value="yes" required>
+Entiendo que no se puede deshacer</label></div>
+<div class="actions"><button type="submit">Borrar mi cuenta para siempre</button>
+<a href="/">No, volver</a></div>
+</form>
+{{with .Error}}<p role="alert">{{.}}</p>{{end}}
+</div>
+</main>
+</body>
+</html>

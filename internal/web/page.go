@@ -58,6 +58,11 @@ type pageData struct {
 	// RandomURL points at /random on the app surface.
 	RandomURL string
 
+	// PrivacyURL and TermsURL point at the legal pages on the app surface,
+	// absolute for the same reason SignURL is.
+	PrivacyURL string
+	TermsURL   string
+
 	// PhotoURL is the owner's current photo as a same-origin path on this
 	// page's own host, /photo/<key>.jpg, or empty when there is none. It is
 	// never the app-host URL: that one is owner-only and no-store.
@@ -116,6 +121,8 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 		OGDescription: ogcard.EmptyStateText,
 		SignURL:       s.Config.BaseURL() + "/sign/" + u.Handle,
 		RandomURL:     s.Config.BaseURL() + "/random",
+		PrivacyURL:    s.Config.BaseURL() + "/privacy",
+		TermsURL:      s.Config.BaseURL() + "/terms",
 	}
 
 	if u.PhotoKey != "" {
