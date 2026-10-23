@@ -5,7 +5,7 @@
 
 # The version must match the `toolchain` line in go.mod; CI reads it from
 # there, and Dependabot proposes patch bumps.
-FROM golang:1.27.2-alpine AS build
+FROM golang:1.27.3-alpine AS build
 
 WORKDIR /src
 
