@@ -35,27 +35,33 @@ func check(s string, allowNewline bool) bool {
 	return true
 }
 
-// disallowedFormat reports whether r is an invisible Unicode format or
-// separator character that unicode.IsControl misses but a display name must
-// not contain.
+// disallowedFormat reports whether r is an invisible Unicode character that
+// unicode.IsControl misses but user text must not contain: every format
+// character (category Cf), plus the line and paragraph separators U+2028 and
+// U+2029 (categories Zl and Zp), which are line breaks that get past the "one
+// line" rule.
 //
-// The bidi embedding, override and isolate controls (U+202A–U+202E,
-// U+2066–U+2069) and the bidi marks (U+200E, U+200F) change how the text
-// around them is ordered. A right-to-left override can reverse what follows
-// it, so a name could be made to look like another name on the page, in
-// <title> and in link previews. U+2028 and U+2029 are line and paragraph
-// separators: line breaks that get past the "one line" rule.
+// The rule is by category rather than a list of code points because lists go
+// stale. Cf holds the bidi embedding, override and isolate controls
+// (U+202A–U+202E, U+2066–U+2069), the bidi marks (U+200E, U+200F, U+061C) and
+// zero-width characters (U+200B, U+2060, U+FEFF), and soft hyphen (U+00AD).
+// A right-to-left override can reverse what follows it, and zero-width
+// characters make two different names look identical; on a page, in <title>
+// and in link previews.
 //
-// U+200D (zero-width joiner) stays allowed on purpose: multi-part emoji such
-// as families and skin-tone sequences cannot be written without it.
+// Three exceptions stay allowed, because text cannot be written without them:
+//   - U+200D (zero-width joiner): multi-part emoji such as families and
+//     skin-tone sequences.
+//   - U+200C (zero-width non-joiner): needed to spell words correctly in some
+//     languages, such as Persian.
+//   - U+E0020–U+E007F (tag characters): subdivision flag emoji, such as
+//     Scotland's.
 func disallowedFormat(r rune) bool {
 	switch {
-	case r >= 0x202A && r <= 0x202E:
-		return true
-	case r >= 0x2066 && r <= 0x2069:
-		return true
-	case r == 0x200E, r == 0x200F, r == 0x2028, r == 0x2029:
+	case r == 0x200D, r == 0x200C, r >= 0xE0020 && r <= 0xE007F:
+		return false
+	case r == 0x2028, r == 0x2029:
 		return true
 	}
-	return false
+	return unicode.Is(unicode.Cf, r)
 }

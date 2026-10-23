@@ -30,10 +30,19 @@ func TestLineAndBlock(t *testing.T) {
 		{"U+200F", "a\u200fb", false, false},
 		{"U+2028", "a\u2028b", false, false},
 		{"U+2029", "a\u2029b", false, false},
+		{"U+061C", "a\u061Cb", false, false},
+		{"U+200B", "a\u200Bb", false, false},
+		{"U+2060", "a\u2060b", false, false},
+		{"U+FEFF", "a\uFEFFb", false, false},
+		{"U+00AD soft hyphen", "a\u00ADb", false, false},
+		{"ZWNJ", "a\u200Cb", true, true},
+		{"Scotland flag", "🏴\U000E0067\U000E0062\U000E0073\U000E0063\U000E0074\U000E007F", true, true},
+		{"plain name", "Seba", true, true},
+		{"accented name", "élena", true, true},
 		{"just below U+202A", "a\u2027b", true, true},
 		{"just above U+202E", "a b", true, true},
 		{"just below U+2066", "a⁥b", true, true},
-		{"just above U+2069", "a\u206ab", true, true},
+		{"U+206A deprecated format", "a\u206ab", false, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
