@@ -383,7 +383,10 @@ func NormaliseDisplayName(raw string) (string, error) {
 // account that uploaded at or after it gets [ErrPhotoNotAllowed], as does one
 // that is not on the allowlist. The check and the write are one statement, so
 // two uploads racing cannot both succeed.
-func (s *Service) SetPhoto(ctx context.Context, id uuid.UUID, key string, w, h int, dayStart time.Time) (string, error) {
+//
+// uploadedAt is stored as the upload time. It must come from the same clock as
+// dayStart, so the daily rule reads and writes one clock.
+func (s *Service) SetPhoto(ctx context.Context, id uuid.UUID, key string, w, h int, dayStart, uploadedAt time.Time) (string, error) {
 	w32, h32 := int32(w), int32(h) //nolint:gosec // G115: photo.MaxEdge bounds both well inside int32
 	old, err := s.queries.SetPhoto(ctx, store.SetPhotoParams{
 		ID:          id,
@@ -391,6 +394,7 @@ func (s *Service) SetPhoto(ctx context.Context, id uuid.UUID, key string, w, h i
 		PhotoWidth:  &w32,
 		PhotoHeight: &h32,
 		DayStart:    pgtype.Timestamptz{Time: dayStart, Valid: true},
+		UploadedAt:  pgtype.Timestamptz{Time: uploadedAt, Valid: true},
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

@@ -46,7 +46,7 @@ func TestSetPhoto(t *testing.T) {
 	svc := user.NewService(pool)
 	u := photoUser(t, pool, svc, true)
 
-	old, err := svc.SetPhoto(t.Context(), u.ID, keyA, 40, 20, day1)
+	old, err := svc.SetPhoto(t.Context(), u.ID, keyA, 40, 20, day1, day1)
 	if err != nil {
 		t.Fatalf("SetPhoto() error = %v", err)
 	}
@@ -66,7 +66,7 @@ func TestSetPhoto(t *testing.T) {
 	}
 
 	// Same day: refused, and nothing changes.
-	if _, err = svc.SetPhoto(t.Context(), u.ID, keyB, 10, 10, day1); !errors.Is(err, user.ErrPhotoNotAllowed) {
+	if _, err = svc.SetPhoto(t.Context(), u.ID, keyB, 10, 10, day1, day1); !errors.Is(err, user.ErrPhotoNotAllowed) {
 		t.Fatalf("second SetPhoto() error = %v, want ErrPhotoNotAllowed", err)
 	}
 	if got, _ = svc.GetByID(t.Context(), u.ID); got.PhotoKey != keyA {
@@ -74,7 +74,7 @@ func TestSetPhoto(t *testing.T) {
 	}
 
 	// A later day start: allowed, and it returns the first key.
-	old, err = svc.SetPhoto(t.Context(), u.ID, keyB, 10, 10, day1.Add(24*time.Hour))
+	old, err = svc.SetPhoto(t.Context(), u.ID, keyB, 10, 10, day1.Add(24*time.Hour), day1.Add(24*time.Hour))
 	if err != nil {
 		t.Fatalf("SetPhoto() next day error = %v", err)
 	}
@@ -89,11 +89,33 @@ func TestSetPhoto_NotAllowlisted(t *testing.T) {
 	svc := user.NewService(pool)
 	u := photoUser(t, pool, svc, false)
 
-	if _, err := svc.SetPhoto(t.Context(), u.ID, keyA, 40, 20, day1); !errors.Is(err, user.ErrPhotoNotAllowed) {
+	if _, err := svc.SetPhoto(t.Context(), u.ID, keyA, 40, 20, day1, day1); !errors.Is(err, user.ErrPhotoNotAllowed) {
 		t.Fatalf("SetPhoto() error = %v, want ErrPhotoNotAllowed", err)
 	}
 	if got, _ := svc.GetByID(t.Context(), u.ID); got.PhotoKey != "" {
 		t.Errorf("PhotoKey = %q, want empty", got.PhotoKey)
+	}
+}
+
+// TestSetPhoto_UsesCallerClock fails if the query stamps the upload with the
+// database's clock instead of the time the caller passed.
+func TestSetPhoto_UsesCallerClock(t *testing.T) {
+	t.Parallel()
+	pool := testdb.New(t)
+	svc := user.NewService(pool)
+	u := photoUser(t, pool, svc, true)
+
+	longAgo := time.Date(2020, 1, 1, 9, 30, 0, 0, time.UTC)
+	if _, err := svc.SetPhoto(t.Context(), u.ID, keyA, 40, 20, longAgo.Add(-time.Hour), longAgo); err != nil {
+		t.Fatalf("SetPhoto() error = %v", err)
+	}
+
+	var got time.Time
+	if err := pool.QueryRow(t.Context(), `SELECT photo_uploaded_at FROM users WHERE id = $1`, u.ID).Scan(&got); err != nil {
+		t.Fatalf("read photo_uploaded_at: %v", err)
+	}
+	if !got.Equal(longAgo) {
+		t.Errorf("photo_uploaded_at = %v, want %v", got, longAgo)
 	}
 }
 
@@ -127,8 +149,8 @@ func TestSetPhoto_UploadCommittedWhileWaitingIsRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err = tx.Exec(t.Context(),
-		`UPDATE users SET photo_key = $2, photo_width = 10, photo_height = 10, photo_uploaded_at = now() WHERE id = $1`,
-		u.ID, keyA); err != nil {
+		`UPDATE users SET photo_key = $2, photo_width = 10, photo_height = 10, photo_uploaded_at = $3 WHERE id = $1`,
+		u.ID, keyA, day1); err != nil {
 		t.Fatal(err)
 	}
 
@@ -138,7 +160,7 @@ func TestSetPhoto_UploadCommittedWhileWaitingIsRefused(t *testing.T) {
 	}
 	done := make(chan result, 1)
 	go func() {
-		old, setErr := svc.SetPhoto(t.Context(), u.ID, keyB, 10, 10, day1)
+		old, setErr := svc.SetPhoto(t.Context(), u.ID, keyB, 10, 10, day1, day1)
 		done <- result{old, setErr}
 	}()
 
@@ -187,7 +209,7 @@ func TestRemovePhoto_KeepsUploadTime(t *testing.T) {
 	svc := user.NewService(pool)
 	u := photoUser(t, pool, svc, true)
 
-	if _, err := svc.SetPhoto(t.Context(), u.ID, keyA, 40, 20, day1); err != nil {
+	if _, err := svc.SetPhoto(t.Context(), u.ID, keyA, 40, 20, day1, day1); err != nil {
 		t.Fatal(err)
 	}
 	old, err := svc.RemovePhoto(t.Context(), u.ID)
@@ -208,7 +230,7 @@ func TestRemovePhoto_KeepsUploadTime(t *testing.T) {
 	if got.PhotoUploadedAt.IsZero() {
 		t.Error("PhotoUploadedAt was cleared by RemovePhoto, want it kept")
 	}
-	if _, err = svc.SetPhoto(t.Context(), u.ID, keyB, 10, 10, day1); !errors.Is(err, user.ErrPhotoNotAllowed) {
+	if _, err = svc.SetPhoto(t.Context(), u.ID, keyB, 10, 10, day1, day1); !errors.Is(err, user.ErrPhotoNotAllowed) {
 		t.Errorf("SetPhoto() after remove error = %v, want ErrPhotoNotAllowed", err)
 	}
 
@@ -232,7 +254,7 @@ func TestByPhotoKey(t *testing.T) {
 	pool := testdb.New(t)
 	svc := user.NewService(pool)
 	u := photoUser(t, pool, svc, true)
-	if _, err := svc.SetPhoto(t.Context(), u.ID, keyA, 40, 20, day1); err != nil {
+	if _, err := svc.SetPhoto(t.Context(), u.ID, keyA, 40, 20, day1, day1); err != nil {
 		t.Fatal(err)
 	}
 
@@ -280,7 +302,7 @@ func TestPhotoKeyIsUnique(t *testing.T) {
 	pool := testdb.New(t)
 	svc := user.NewService(pool)
 	u := photoUser(t, pool, svc, true)
-	if _, err := svc.SetPhoto(t.Context(), u.ID, keyA, 40, 20, day1); err != nil {
+	if _, err := svc.SetPhoto(t.Context(), u.ID, keyA, 40, 20, day1, day1); err != nil {
 		t.Fatal(err)
 	}
 

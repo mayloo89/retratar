@@ -63,11 +63,16 @@ RETURNING *;
 -- once the row lock is granted, so the caller deletes the file the database
 -- really replaced. No rows means "not allowed": not allowlisted, or already
 -- uploaded since @day_start.
+--
+-- @uploaded_at comes from the application's clock, never from now() here. The
+-- rule reads and writes one clock: @day_start and the User.UploadedPhotoOn
+-- check both come from the app, so stamping with the database's clock would
+-- let the two disagree (they only agree when the clocks happen to be close).
 UPDATE users
 SET photo_key = @photo_key,
     photo_width = @photo_width,
     photo_height = @photo_height,
-    photo_uploaded_at = now()
+    photo_uploaded_at = @uploaded_at
 FROM (SELECT u.id, u.photo_key AS old_key FROM users u WHERE u.id = @id FOR UPDATE) old
 WHERE users.id = old.id
   AND users.can_upload_photos
