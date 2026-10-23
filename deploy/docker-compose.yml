@@ -108,6 +108,13 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
+    # Docker's default json-file driver never rotates, and on the Pi's SD card
+    # an unbounded log ends in a full disk. 5 x 10 MB per service is the ceiling.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
   app:
     build:
@@ -133,6 +140,12 @@ services:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+    # Same rotation as postgres above.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
 volumes:
   pgdata:
