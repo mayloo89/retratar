@@ -127,6 +127,15 @@ func TestCollect(t *testing.T) {
 		edge, "bbbbbbbbbbbbbbbbbbbbbbbbbb", ago(10*day))
 	s.exec(`UPDATE users SET photo_uploaded_at = $2, can_upload_photos = true WHERE id = $1`, early, ago(3*day))
 
+	// Rows stamped an hour after now are outside every 7d window. Each is
+	// attached so the other expected numbers do not move; only the unbounded
+	// guestbook total counts the entry.
+	future := now.Add(time.Hour)
+	s.session(exact, future)
+	s.mood(unclaimed, future)
+	s.sign(pass, early, "visible", future)
+	s.exec(`UPDATE users SET photo_uploaded_at = $2 WHERE id = $1`, exact, future)
+
 	got, err := stats.Collect(t.Context(), store.New(pool), now.UTC())
 	if err != nil {
 		t.Fatalf("Collect() error = %v", err)
@@ -145,7 +154,7 @@ func TestCollect(t *testing.T) {
 		ChangedMood:     3,
 		WeekTwoEligible: 4, // pass, early, edge, exact (14 days exactly counts)
 		WeekTwoPassed:   1, // only pass
-		GuestbookTotal:  6,
+		GuestbookTotal:  7, // includes the entry stamped after now
 		Guestbook7d:     3,
 		ReciprocalPairs: 2, // {pass, early} once despite two entries; {edge, young} with one hidden
 		PhotosNow:       2,
