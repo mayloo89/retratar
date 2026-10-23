@@ -727,6 +727,11 @@ func TestLegalIdentity(t *testing.T) {
 		{"production without contact email", "CONTACT_EMAIL", ""},
 		{"production email without @", "CONTACT_EMAIL", "contacto.example.com"},
 		{"production email with two @", "CONTACT_EMAIL", "a@b@example.com"},
+		{"production email only @", "CONTACT_EMAIL", "@"},
+		{"production email without domain", "CONTACT_EMAIL", "a@"},
+		{"production email without local part", "CONTACT_EMAIL", "@b"},
+		{"production email with @@", "CONTACT_EMAIL", "a@@b"},
+		{"production email with whitespace", "CONTACT_EMAIL", "a b@c.d"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -736,6 +741,13 @@ func TestLegalIdentity(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("production minimal email", func(t *testing.T) {
+		t.Parallel()
+		if _, err := config.Load(env(with("CONTACT_EMAIL", "a@b.c"))); err != nil {
+			t.Fatalf("Load() error = %v, want nil", err)
+		}
+	})
 
 	t.Run("development defaults", func(t *testing.T) {
 		t.Parallel()

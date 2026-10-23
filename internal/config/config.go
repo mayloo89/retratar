@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // Environment names the deployment the process is running in. It gates
@@ -173,6 +174,17 @@ func legalValue(getenv Getenv, key, devDefault string) string {
 	return devDefault
 }
 
+// plausibleContactEmail reports whether s splits on its single @ into a
+// non-empty local part and a non-empty domain, with no whitespace. It is a
+// typo check, not address validation.
+func plausibleContactEmail(s string) bool {
+	if strings.IndexFunc(s, unicode.IsSpace) >= 0 {
+		return false
+	}
+	local, domain, ok := strings.Cut(s, "@")
+	return ok && local != "" && domain != "" && !strings.Contains(domain, "@")
+}
+
 // IsProduction reports whether the process runs in production. Callers use it
 // to decide whether cookies get the Secure attribute and whether HSTS is sent.
 func (c Config) IsProduction() bool { return c.Env == EnvProduction }
@@ -252,9 +264,9 @@ func (c Config) Validate() error {
 			errs = append(errs, fmt.Errorf(
 				"%w: CONTACT_EMAIL is required in production: the privacy policy must say how to reach the person responsible",
 				ErrInvalidConfig))
-		} else if strings.Count(c.ContactEmail, "@") != 1 {
+		} else if !plausibleContactEmail(c.ContactEmail) {
 			errs = append(errs, fmt.Errorf(
-				"%w: CONTACT_EMAIL must contain exactly one @",
+				"%w: CONTACT_EMAIL must look like name@domain",
 				ErrInvalidConfig))
 		}
 		if c.MailSender == "log" {
