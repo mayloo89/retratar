@@ -99,6 +99,10 @@ func TestStatsFlag(t *testing.T) {
 	if !strings.HasPrefix(out.String(), "retratar stats at ") {
 		t.Errorf("output = %q, want it to start with the stats heading", out.String())
 	}
+	// The schema is fresh, so a real report line carries a zero.
+	if want := "\naccounts" + strings.Repeat(" ", 12) + "0\n"; !strings.Contains(out.String(), want) {
+		t.Errorf("output = %q, want it to contain the line %q", out.String(), want)
+	}
 	if strings.Contains(out.String(), "listening") {
 		t.Errorf("output mentions listening: %q", out.String())
 	}
