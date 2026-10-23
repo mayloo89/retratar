@@ -26,7 +26,7 @@ func TestClaimHandleFlow_ShowsFormThenClaims(t *testing.T) {
 	}
 
 	claim := request(t, h, http.MethodPost, host, "/handle",
-		strings.NewReader(url.Values{"handle": {"ana-lucia"}}.Encode()), sessionCookie)
+		strings.NewReader(url.Values{"handle": {"ana-lucia"}, "adult": {"yes"}}.Encode()), sessionCookie)
 	claim.Body.Close() //nolint:errcheck // httptest body close cannot fail
 	if claim.StatusCode != http.StatusSeeOther {
 		t.Fatalf("POST /handle status = %d, want 303", claim.StatusCode)
@@ -51,7 +51,7 @@ func TestClaimHandleSubmit_RejectsInvalidShape(t *testing.T) {
 	sessionCookie := completeLogin(t, h, host, sender, srv.Config.BaseURL(), "ana@example.com")
 
 	resp := request(t, h, http.MethodPost, host, "/handle",
-		strings.NewReader(url.Values{"handle": {"Ana Lucia"}}.Encode()), sessionCookie)
+		strings.NewReader(url.Values{"handle": {"Ana Lucia"}, "adult": {"yes"}}.Encode()), sessionCookie)
 	defer resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, want 422", resp.StatusCode)
@@ -69,11 +69,11 @@ func TestClaimHandleSubmit_RejectsTaken(t *testing.T) {
 
 	firstCookie := completeLogin(t, h, host, sender, srv.Config.BaseURL(), "ana@example.com")
 	request(t, h, http.MethodPost, host, "/handle",
-		strings.NewReader(url.Values{"handle": {"ana"}}.Encode()), firstCookie).Body.Close()
+		strings.NewReader(url.Values{"handle": {"ana"}, "adult": {"yes"}}.Encode()), firstCookie).Body.Close()
 
 	secondCookie := completeLogin(t, h, host, sender, srv.Config.BaseURL(), "bea@example.com")
 	resp := request(t, h, http.MethodPost, host, "/handle",
-		strings.NewReader(url.Values{"handle": {"ana"}}.Encode()), secondCookie)
+		strings.NewReader(url.Values{"handle": {"ana"}, "adult": {"yes"}}.Encode()), secondCookie)
 	defer resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
 	if resp.StatusCode != http.StatusConflict {
 		t.Fatalf("status = %d, want 409", resp.StatusCode)
@@ -87,10 +87,10 @@ func TestClaimHandleSubmit_AlreadySetRedirectsHome(t *testing.T) {
 
 	sessionCookie := completeLogin(t, h, host, sender, srv.Config.BaseURL(), "ana@example.com")
 	request(t, h, http.MethodPost, host, "/handle",
-		strings.NewReader(url.Values{"handle": {"ana"}}.Encode()), sessionCookie).Body.Close()
+		strings.NewReader(url.Values{"handle": {"ana"}, "adult": {"yes"}}.Encode()), sessionCookie).Body.Close()
 
 	resp := request(t, h, http.MethodPost, host, "/handle",
-		strings.NewReader(url.Values{"handle": {"someone-else"}}.Encode()), sessionCookie)
+		strings.NewReader(url.Values{"handle": {"someone-else"}, "adult": {"yes"}}.Encode()), sessionCookie)
 	resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
 	if resp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("status = %d, want 303 (already has a handle)", resp.StatusCode)
@@ -107,7 +107,7 @@ func TestClaimHandleForm_ActiveAccountRedirectsHome(t *testing.T) {
 
 	sessionCookie := completeLogin(t, h, host, sender, srv.Config.BaseURL(), "ana@example.com")
 	request(t, h, http.MethodPost, host, "/handle",
-		strings.NewReader(url.Values{"handle": {"ana"}}.Encode()), sessionCookie).Body.Close()
+		strings.NewReader(url.Values{"handle": {"ana"}, "adult": {"yes"}}.Encode()), sessionCookie).Body.Close()
 
 	resp := request(t, h, http.MethodGet, host, "/handle", nil, sessionCookie)
 	resp.Body.Close() //nolint:errcheck // httptest body close cannot fail

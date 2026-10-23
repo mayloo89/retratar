@@ -46,6 +46,8 @@ func TestLoadReadsEnvironment(t *testing.T) {
 		"SMTP_PASSWORD":    "smtp-pass",
 		"MAIL_FROM":        "noreply@retratar.com.ar",
 		"PHOTOS_DIR":       "/data/photos",
+		"OPERATOR_NAME":    "Nombre De Prueba",
+		"CONTACT_EMAIL":    "contacto@example.com",
 	}))
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
@@ -104,6 +106,8 @@ func TestValidateRejectsSharedRegistrableDomain(t *testing.T) {
 		SMTPPassword:    "token",
 		MailFrom:        "noreply@retratar.com.ar",
 		PhotosDir:       "/data/photos",
+		OperatorName:    "Nombre De Prueba",
+		ContactEmail:    "contacto@example.com",
 		ShutdownTimeout: time.Second,
 	}
 
@@ -175,6 +179,8 @@ func TestValidateRejectsPublicAdminAddr(t *testing.T) {
 		SMTPPassword:    "token",
 		MailFrom:        "noreply@retratar.com.ar",
 		PhotosDir:       "/data/photos",
+		OperatorName:    "Nombre De Prueba",
+		ContactEmail:    "contacto@example.com",
 		ShutdownTimeout: time.Second,
 	}
 
@@ -231,6 +237,8 @@ func TestValidateRequiresSMTPInProduction(t *testing.T) {
 		SMTPPassword:    "token",
 		MailFrom:        "noreply@retratar.com.ar",
 		PhotosDir:       "/data/photos",
+		OperatorName:    "Nombre De Prueba",
+		ContactEmail:    "contacto@example.com",
 		ShutdownTimeout: time.Second,
 	}
 
@@ -326,6 +334,7 @@ func TestValidateRejectsPublicAddrOutsideProduction(t *testing.T) {
 	prod.Env = config.EnvProduction
 	prod.MailSender = ""
 	prod.PhotosDir = "/data/photos"
+	prod.OperatorName, prod.ContactEmail = "Nombre De Prueba", "contacto@example.com"
 	prod.Addr = "127.0.0.1:8082"
 	prod.AppHost, prod.PagesHost = "retratar.com.ar", "retrat.ar"
 	prod.DatabaseURL = "postgres://u:p@db.internal:5432/retratar"
@@ -406,6 +415,8 @@ func TestValidateDatabaseURL(t *testing.T) {
 		SMTPPassword:    "token",
 		MailFrom:        "noreply@retratar.com.ar",
 		PhotosDir:       "/data/photos",
+		OperatorName:    "Nombre De Prueba",
+		ContactEmail:    "contacto@example.com",
 		ShutdownTimeout: time.Second,
 	}
 
@@ -509,6 +520,8 @@ func TestValidateRequiresLoopbackAddrInProduction(t *testing.T) {
 		SMTPPassword:    "token",
 		MailFrom:        "noreply@retratar.com.ar",
 		PhotosDir:       "/data/photos",
+		OperatorName:    "Nombre De Prueba",
+		ContactEmail:    "contacto@example.com",
 		ShutdownTimeout: time.Second,
 	}
 
@@ -555,6 +568,8 @@ func TestValidateMailSender(t *testing.T) {
 		SMTPPassword:    "token",
 		MailFrom:        "noreply@retratar.com.ar",
 		PhotosDir:       "/data/photos",
+		OperatorName:    "Nombre De Prueba",
+		ContactEmail:    "contacto@example.com",
 		ShutdownTimeout: time.Second,
 	}
 
@@ -624,6 +639,8 @@ func TestPhotosDir(t *testing.T) {
 		"SMTP_USERNAME": "user",
 		"SMTP_PASSWORD": "pass",
 		"MAIL_FROM":     "noreply@retratar.com.ar",
+		"OPERATOR_NAME": "Nombre De Prueba",
+		"CONTACT_EMAIL": "contacto@example.com",
 	}
 	with := func(dir string) map[string]string {
 		m := map[string]string{"PHOTOS_DIR": dir}
@@ -664,4 +681,86 @@ func TestPhotosDir(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestLegalIdentity(t *testing.T) {
+	t.Parallel()
+
+	prod := map[string]string{
+		"ENV":           "production",
+		"DATABASE_URL":  "postgres://u:p@db.internal:5432/retratar?sslmode=require",
+		"ADDR":          "127.0.0.1:8082",
+		"APP_HOST":      "retratar.com.ar",
+		"PAGES_HOST":    "retrat.ar",
+		"SMTP_HOST":     "smtp-relay.brevo.com",
+		"SMTP_PORT":     "587",
+		"SMTP_USERNAME": "user",
+		"SMTP_PASSWORD": "pass",
+		"MAIL_FROM":     "noreply@retratar.com.ar",
+		"PHOTOS_DIR":    "/data/photos",
+		"OPERATOR_NAME": "Nombre De Prueba",
+		"CONTACT_EMAIL": "contacto@example.com",
+	}
+	with := func(key, val string) map[string]string {
+		m := map[string]string{}
+		for k, v := range prod {
+			m[k] = v
+		}
+		m[key] = val
+		return m
+	}
+
+	t.Run("production complete", func(t *testing.T) {
+		t.Parallel()
+		cfg, err := config.Load(env(prod))
+		if err != nil {
+			t.Fatalf("Load() error = %v, want nil", err)
+		}
+		if cfg.OperatorName != "Nombre De Prueba" || cfg.ContactEmail != "contacto@example.com" {
+			t.Errorf("got %q and %q, want the configured values", cfg.OperatorName, cfg.ContactEmail)
+		}
+	})
+
+	for _, tt := range []struct{ name, key, val string }{
+		{"production without operator name", "OPERATOR_NAME", ""},
+		{"production with blank operator name", "OPERATOR_NAME", "   "},
+		{"production without contact email", "CONTACT_EMAIL", ""},
+		{"production email without @", "CONTACT_EMAIL", "contacto.example.com"},
+		{"production email with two @", "CONTACT_EMAIL", "a@b@example.com"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := config.Load(env(with(tt.key, tt.val)))
+			if !errors.Is(err, config.ErrInvalidConfig) || !strings.Contains(err.Error(), tt.key) {
+				t.Fatalf("Load() error = %v, want ErrInvalidConfig naming %s", err, tt.key)
+			}
+		})
+	}
+
+	t.Run("development defaults", func(t *testing.T) {
+		t.Parallel()
+		cfg, err := config.Load(env(map[string]string{"MAIL_SENDER": "log"}))
+		if err != nil {
+			t.Fatalf("Load() error = %v, want nil", err)
+		}
+		if cfg.OperatorName != "Operador de prueba" {
+			t.Errorf("OperatorName = %q, want %q", cfg.OperatorName, "Operador de prueba")
+		}
+		if cfg.ContactEmail != "contacto@example.com" {
+			t.Errorf("ContactEmail = %q, want %q", cfg.ContactEmail, "contacto@example.com")
+		}
+	})
+
+	t.Run("development keeps what is set", func(t *testing.T) {
+		t.Parallel()
+		cfg, err := config.Load(env(map[string]string{
+			"MAIL_SENDER": "log", "OPERATOR_NAME": "Otro Nombre", "CONTACT_EMAIL": "otro@example.com",
+		}))
+		if err != nil {
+			t.Fatalf("Load() error = %v, want nil", err)
+		}
+		if cfg.OperatorName != "Otro Nombre" || cfg.ContactEmail != "otro@example.com" {
+			t.Errorf("got %q and %q, want the configured values", cfg.OperatorName, cfg.ContactEmail)
+		}
+	})
 }

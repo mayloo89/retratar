@@ -3,6 +3,7 @@ package guestbook_test
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -27,7 +28,7 @@ func newAccount(t *testing.T, pool *pgxpool.Pool, email, handle string) user.Use
 	if err != nil {
 		t.Fatalf("CompleteLogin() error = %v, want nil", err)
 	}
-	u, err = svc.ClaimHandle(t.Context(), u.ID, handle)
+	u, err = svc.ClaimHandle(t.Context(), u.ID, handle, time.Now())
 	if err != nil {
 		t.Fatalf("ClaimHandle() error = %v, want nil", err)
 	}

@@ -19,7 +19,7 @@ func TestHandleOGImage_RendersMoodForAClaimedHandle(t *testing.T) {
 
 	sessionCookie := completeLogin(t, h, appHost, sender, srv.Config.BaseURL(), "ana@example.com")
 	request(t, h, http.MethodPost, appHost, "/handle",
-		strings.NewReader(url.Values{"handle": {"ana"}}.Encode()), sessionCookie).Body.Close()
+		strings.NewReader(url.Values{"handle": {"ana"}, "adult": {"yes"}}.Encode()), sessionCookie).Body.Close()
 	request(t, h, http.MethodPost, appHost, "/mood",
 		strings.NewReader(url.Values{"mood_key": {"inspirado"}, "note": {"nuevo proyecto"}}.Encode()),
 		sessionCookie).Body.Close()
@@ -53,7 +53,7 @@ func TestHandleOGImage_NoMoodYetStillRenders200(t *testing.T) {
 
 	sessionCookie := completeLogin(t, h, appHost, sender, srv.Config.BaseURL(), "ana@example.com")
 	request(t, h, http.MethodPost, appHost, "/handle",
-		strings.NewReader(url.Values{"handle": {"ana"}}.Encode()), sessionCookie).Body.Close()
+		strings.NewReader(url.Values{"handle": {"ana"}, "adult": {"yes"}}.Encode()), sessionCookie).Body.Close()
 
 	resp := request(t, h, http.MethodGet, "ana.retrat.ar", "/og.png", nil)
 	defer resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
@@ -84,7 +84,7 @@ func TestHandleOGImage_CacheHeadersAndConditionalGet(t *testing.T) {
 
 	sessionCookie := completeLogin(t, h, appHost, sender, srv.Config.BaseURL(), "ana@example.com")
 	request(t, h, http.MethodPost, appHost, "/handle",
-		strings.NewReader(url.Values{"handle": {"ana"}}.Encode()), sessionCookie).Body.Close()
+		strings.NewReader(url.Values{"handle": {"ana"}, "adult": {"yes"}}.Encode()), sessionCookie).Body.Close()
 	request(t, h, http.MethodPost, appHost, "/mood",
 		strings.NewReader(url.Values{"mood_key": {"feliz"}, "note": {""}}.Encode()), sessionCookie).Body.Close()
 
@@ -164,7 +164,7 @@ func TestHandleOGImage_QueryStringIs404(t *testing.T) {
 
 	sessionCookie := completeLogin(t, h, appHost, sender, srv.Config.BaseURL(), "ana@example.com")
 	request(t, h, http.MethodPost, appHost, "/handle",
-		strings.NewReader(url.Values{"handle": {"ana"}}.Encode()), sessionCookie).Body.Close()
+		strings.NewReader(url.Values{"handle": {"ana"}, "adult": {"yes"}}.Encode()), sessionCookie).Body.Close()
 
 	for _, path := range []string{"/og.png?v=1", "/og.png?", "/og.png?x=%00"} {
 		resp := request(t, h, http.MethodGet, "ana.retrat.ar", path, nil)

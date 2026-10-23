@@ -319,7 +319,7 @@ func TestClaimHandleSucceeds(t *testing.T) {
 	svc := user.NewService(pool)
 	created := login(t, svc, "ana@example.com")
 
-	got, err := svc.ClaimHandle(t.Context(), created.ID, "ana-lucia")
+	got, err := svc.ClaimHandle(t.Context(), created.ID, "ana-lucia", time.Now())
 	if err != nil {
 		t.Fatalf("ClaimHandle() error = %v, want nil", err)
 	}
@@ -338,7 +338,7 @@ func TestClaimHandleRejectsInvalidShape(t *testing.T) {
 	svc := user.NewService(pool)
 	created := login(t, svc, "ana@example.com")
 
-	if _, err := svc.ClaimHandle(t.Context(), created.ID, "Ana Lucia"); !errors.Is(err, user.ErrInvalidHandle) {
+	if _, err := svc.ClaimHandle(t.Context(), created.ID, "Ana Lucia", time.Now()); !errors.Is(err, user.ErrInvalidHandle) {
 		t.Fatalf("ClaimHandle() error = %v, want ErrInvalidHandle", err)
 	}
 }
@@ -350,10 +350,10 @@ func TestClaimHandleRejectsAlreadySet(t *testing.T) {
 	svc := user.NewService(pool)
 	created := login(t, svc, "ana@example.com")
 
-	if _, err := svc.ClaimHandle(t.Context(), created.ID, "ana"); err != nil {
+	if _, err := svc.ClaimHandle(t.Context(), created.ID, "ana", time.Now()); err != nil {
 		t.Fatalf("first ClaimHandle() error = %v, want nil", err)
 	}
-	if _, err := svc.ClaimHandle(t.Context(), created.ID, "ana-lucia"); !errors.Is(err, user.ErrHandleAlreadySet) {
+	if _, err := svc.ClaimHandle(t.Context(), created.ID, "ana-lucia", time.Now()); !errors.Is(err, user.ErrHandleAlreadySet) {
 		t.Fatalf("second ClaimHandle() error = %v, want ErrHandleAlreadySet", err)
 	}
 }
@@ -368,10 +368,10 @@ func TestClaimHandleRejectsTaken(t *testing.T) {
 	first := login(t, svc, "ana@example.com")
 	second := login(t, svc, "bea@example.com")
 
-	if _, err := svc.ClaimHandle(t.Context(), first.ID, "ana"); err != nil {
+	if _, err := svc.ClaimHandle(t.Context(), first.ID, "ana", time.Now()); err != nil {
 		t.Fatalf("first ClaimHandle() error = %v, want nil", err)
 	}
-	if _, err := svc.ClaimHandle(t.Context(), second.ID, "ana"); !errors.Is(err, user.ErrHandleTaken) {
+	if _, err := svc.ClaimHandle(t.Context(), second.ID, "ana", time.Now()); !errors.Is(err, user.ErrHandleTaken) {
 		t.Fatalf("second ClaimHandle() error = %v, want ErrHandleTaken", err)
 	}
 }
@@ -383,7 +383,7 @@ func TestGetByHandleReturnsTheAccount(t *testing.T) {
 	svc := user.NewService(pool)
 	created := login(t, svc, "ana@example.com")
 
-	if _, err := svc.ClaimHandle(t.Context(), created.ID, "ana"); err != nil {
+	if _, err := svc.ClaimHandle(t.Context(), created.ID, "ana", time.Now()); err != nil {
 		t.Fatalf("ClaimHandle() error = %v, want nil", err)
 	}
 
@@ -665,10 +665,10 @@ func TestRandomHandle(t *testing.T) {
 	a := login(t, svc, "a@example.com")
 	b := login(t, svc, "b@example.com")
 	login(t, svc, "c@example.com") // never claims a handle
-	if _, err := svc.ClaimHandle(t.Context(), a.ID, "aaa"); err != nil {
+	if _, err := svc.ClaimHandle(t.Context(), a.ID, "aaa", time.Now()); err != nil {
 		t.Fatalf("ClaimHandle(a) error = %v", err)
 	}
-	if _, err := svc.ClaimHandle(t.Context(), b.ID, "bbb"); err != nil {
+	if _, err := svc.ClaimHandle(t.Context(), b.ID, "bbb", time.Now()); err != nil {
 		t.Fatalf("ClaimHandle(b) error = %v", err)
 	}
 
@@ -699,7 +699,7 @@ func TestRandomHandle(t *testing.T) {
 	// Excluding the only other claimed account leaves nothing.
 	only := user.NewService(testdb.New(t))
 	solo := login(t, only, "solo@example.com")
-	if _, err := only.ClaimHandle(t.Context(), solo.ID, "solo"); err != nil {
+	if _, err := only.ClaimHandle(t.Context(), solo.ID, "solo", time.Now()); err != nil {
 		t.Fatalf("ClaimHandle(solo) error = %v", err)
 	}
 	if _, err := only.RandomHandle(t.Context(), &solo.ID); !errors.Is(err, user.ErrUserNotFound) {

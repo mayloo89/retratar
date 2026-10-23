@@ -59,3 +59,9 @@ SELECT pg_advisory_xact_lock(hashtextextended(@email::text, 0));
 -- budget still needs.
 DELETE FROM login_tokens
 WHERE expires_at < now() - make_interval(secs => @older_than_seconds::double precision);
+
+-- name: DeleteLoginTokensForEmail :exec
+--
+-- login_tokens has no foreign key to users, so deleting an account does not
+-- take its tokens with it. Without this the address outlives the account.
+DELETE FROM login_tokens WHERE lower(email) = lower(@email);

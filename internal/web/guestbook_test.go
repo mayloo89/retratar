@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -39,7 +40,7 @@ func guestbookAccount(t *testing.T, srv *web.Server, email, handle string) (*htt
 		t.Fatalf("CompleteLogin() error = %v", err)
 	}
 	if handle != "" {
-		if u, err = srv.Users.ClaimHandle(t.Context(), u.ID, handle); err != nil {
+		if u, err = srv.Users.ClaimHandle(t.Context(), u.ID, handle, time.Now()); err != nil {
 			t.Fatalf("ClaimHandle() error = %v", err)
 		}
 	}

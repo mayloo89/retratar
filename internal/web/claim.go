@@ -11,7 +11,12 @@ import (
 // claimHandleData is what claim_handle.html renders.
 type claimHandleData struct {
 	Error string
+	// Handle is what was typed, kept when the form is shown again.
+	Handle string
 }
+
+// msgAdultRequired is shown when the 18+ and terms checkbox was not ticked.
+const msgAdultRequired = "Para usar retratar tenés que tener 18 años o más y aceptar los términos."
 
 // handleClaimForm shows the one-time handle-picker. An account that already
 // has a handle has nothing left to claim, so it is sent to the dashboard.
@@ -43,7 +48,16 @@ func (s *Server) handleClaimSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := s.Users.ClaimHandle(r.Context(), u.ID, r.FormValue("handle"))
+	handle := r.FormValue("handle")
+	// The checkbox is required in the form; this is the server's own check.
+	// Only exactly "yes" counts.
+	if r.FormValue("adult") != "yes" {
+		s.renderTemplate(w, http.StatusUnprocessableEntity, "claim_handle.html",
+			claimHandleData{Error: msgAdultRequired, Handle: handle})
+		return
+	}
+
+	_, err := s.Users.ClaimHandle(r.Context(), u.ID, handle, s.now())
 	if err != nil {
 		switch {
 		case errors.Is(err, user.ErrInvalidHandle):

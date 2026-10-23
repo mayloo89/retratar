@@ -22,7 +22,7 @@ func TestAppHome_LinksToPageBaseURL(t *testing.T) {
 
 			sessionCookie := completeLogin(t, h, host, sender, srv.Config.BaseURL(), "ana@example.com")
 			request(t, h, http.MethodPost, host, "/handle",
-				strings.NewReader(url.Values{"handle": {"ana"}}.Encode()), sessionCookie).Body.Close()
+				strings.NewReader(url.Values{"handle": {"ana"}, "adult": {"yes"}}.Encode()), sessionCookie).Body.Close()
 
 			resp := request(t, h, http.MethodGet, host, "/", nil, sessionCookie)
 			defer resp.Body.Close() //nolint:errcheck // httptest body close cannot fail

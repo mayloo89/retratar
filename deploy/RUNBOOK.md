@@ -28,6 +28,9 @@ config is the failure that leaves you with nothing serving at all.
     git fetch origin
     git checkout develop && git pull --ff-only
 
+From this release, `deploy/retratar.env` must set `OPERATOR_NAME` and
+`CONTACT_EMAIL`, or the app refuses to start.
+
 **1. nginx configs. Install both, in one step.**
 
     sudo cp deploy/nginx/retrat.ar.conf          /etc/nginx/conf.d/

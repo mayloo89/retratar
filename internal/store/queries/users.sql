@@ -22,9 +22,23 @@ SELECT * FROM users WHERE id = @id;
 -- already produces for "this cannot proceed." A second, different user
 -- claiming the same handle instead hits users_handle_key and fails as a
 -- unique violation, which the caller distinguishes from "already set."
+--
+-- A handle held in deleted_handles also matches no row. The reservation is
+-- checked here, in the claim itself, and not by a read beforehand: a separate
+-- "is it reserved?" read would be a race. The caller tells "reserved" from
+-- "already set" by looking at the account afterwards.
+--
+-- @accepted_at is the application's clock, and one clock does both jobs: it is
+-- stamped as terms_accepted_at and it is the "now" the reservation is measured
+-- from. deleted_handles.handle is lower case, so the comparison is too.
 UPDATE users
-SET handle = @handle, state = 'active'
+SET handle = sqlc.arg(handle), state = 'active', terms_accepted_at = sqlc.arg(accepted_at)
 WHERE id = @id AND handle IS NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM deleted_handles d
+    WHERE d.handle = lower(sqlc.arg(handle)::text)
+      AND d.deleted_at > sqlc.arg(accepted_at)::timestamptz - make_interval(secs => sqlc.arg(reserve_seconds)::double precision)
+  )
 RETURNING *;
 
 -- name: GetUserByHandle :one
@@ -92,3 +106,16 @@ RETURNING coalesce(old.old_key, '')::text AS old_key;
 
 -- name: GetUserByPhotoKey :one
 SELECT * FROM users WHERE photo_key = @photo_key;
+
+-- name: LockUserForDelete :one
+--
+-- Reads the account and holds its row until the transaction ends, so a photo
+-- uploaded at the same moment cannot change photo_key between this read and
+-- DeleteUser: the caller deletes the file that was really there.
+SELECT * FROM users WHERE id = @id FOR UPDATE;
+
+-- name: DeleteUser :execrows
+--
+-- Sessions, moods, mood history and guestbook entries (as page owner and as
+-- author) go with the account by ON DELETE CASCADE.
+DELETE FROM users WHERE id = @id;

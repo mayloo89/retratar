@@ -19,8 +19,8 @@ const purgeRetention = 7 * 24 * time.Hour
 // retention measured in days.
 const purgeInterval = time.Hour
 
-// purgeLoop deletes expired login tokens and sessions: once immediately, then
-// every interval, until ctx is done.
+// purgeLoop deletes expired login tokens and sessions, and handle reservations
+// that have run out: once immediately, then every interval, until ctx is done.
 //
 // A failed run is logged and the loop carries on; one bad purge must not stop
 // the process or the next attempt. Logs carry counts only, never addresses.
@@ -40,9 +40,15 @@ func purgeLoop(ctx context.Context, logger *slog.Logger, interval, retention tim
 			logger.Error("purge sessions failed", slog.Any("error", err))
 			return
 		}
+		handles, err := users.PurgeDeletedHandles(ctx, user.DeletedHandleReservation)
+		if err != nil {
+			logger.Error("purge deleted handles failed", slog.Any("error", err))
+			return
+		}
 		logger.Info("purged expired rows",
 			slog.Int64("login_tokens", tokens),
 			slog.Int64("sessions", expired),
+			slog.Int64("deleted_handles", handles),
 		)
 	}
 

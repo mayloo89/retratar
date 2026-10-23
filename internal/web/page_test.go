@@ -19,7 +19,7 @@ func TestHandlePage_RendersMoodForAClaimedHandle(t *testing.T) {
 
 	sessionCookie := completeLogin(t, h, appHost, sender, srv.Config.BaseURL(), "ana@example.com")
 	request(t, h, http.MethodPost, appHost, "/handle",
-		strings.NewReader(url.Values{"handle": {"ana"}}.Encode()), sessionCookie).Body.Close()
+		strings.NewReader(url.Values{"handle": {"ana"}, "adult": {"yes"}}.Encode()), sessionCookie).Body.Close()
 	request(t, h, http.MethodPost, appHost, "/mood",
 		strings.NewReader(url.Values{"mood_key": {"inspirado"}, "note": {"nuevo proyecto"}}.Encode()),
 		sessionCookie).Body.Close()
@@ -47,7 +47,7 @@ func TestHandlePage_NoMoodYetRendersEmptyState(t *testing.T) {
 
 	sessionCookie := completeLogin(t, h, appHost, sender, srv.Config.BaseURL(), "ana@example.com")
 	request(t, h, http.MethodPost, appHost, "/handle",
-		strings.NewReader(url.Values{"handle": {"ana"}}.Encode()), sessionCookie).Body.Close()
+		strings.NewReader(url.Values{"handle": {"ana"}, "adult": {"yes"}}.Encode()), sessionCookie).Body.Close()
 
 	page := request(t, h, http.MethodGet, "ana.retrat.ar", "/", nil)
 	defer page.Body.Close() //nolint:errcheck // httptest body close cannot fail
@@ -100,7 +100,7 @@ func TestPage_EmitsAbsoluteOGTags(t *testing.T) {
 
 	sessionCookie := completeLogin(t, h, appHost, sender, srv.Config.BaseURL(), "ana@example.com")
 	request(t, h, http.MethodPost, appHost, "/handle",
-		strings.NewReader(url.Values{"handle": {"ana"}}.Encode()), sessionCookie).Body.Close()
+		strings.NewReader(url.Values{"handle": {"ana"}, "adult": {"yes"}}.Encode()), sessionCookie).Body.Close()
 
 	getPage := func() string {
 		t.Helper()
@@ -157,7 +157,7 @@ func claimAna(t *testing.T, srv *web.Server, sender *stubSender, h http.Handler)
 	appHost := srv.Config.AppHost
 	sessionCookie := completeLogin(t, h, appHost, sender, srv.Config.BaseURL(), "ana@example.com")
 	request(t, h, http.MethodPost, appHost, "/handle",
-		strings.NewReader(url.Values{"handle": {"ana"}}.Encode()), sessionCookie).Body.Close()
+		strings.NewReader(url.Values{"handle": {"ana"}, "adult": {"yes"}}.Encode()), sessionCookie).Body.Close()
 	return sessionCookie
 }
 

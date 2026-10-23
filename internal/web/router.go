@@ -128,7 +128,7 @@ func (s *Server) hostSplit(app, pages http.Handler) http.Handler {
 //
 // writes rate-limits the endpoints a script can abuse cheaply. POST /login is
 // the one that matters — it sends mail — but POST /handle, POST /mood, POST /name,
-// POST /photo and POST /photo/remove are unbounded writes too, so they share the limiter. POST /logout is left off:
+// POST /photo, POST /photo/remove and POST /account/delete are unbounded writes too, so they share the limiter. POST /logout is left off:
 // it sends nothing, its work is a single idempotent revoke, and a forged
 // logout is a nuisance rather than a cost. GET routes are read-only and the
 // login sub-steps (GET/POST /login/{token}) are already gated by the nonce
@@ -150,6 +150,11 @@ func (s *Server) appRoutes(writes, logins48 *rateLimiter) http.Handler {
 	mux.Handle("POST /photo", writes.rateLimit(http.HandlerFunc(s.handlePhotoUpload)))
 	mux.Handle("POST /photo/remove", writes.rateLimit(http.HandlerFunc(s.handlePhotoRemove)))
 	mux.HandleFunc("GET /photo/{file}", s.handleAppPhoto)
+	mux.HandleFunc("GET /privacy", s.handlePrivacy)
+	mux.HandleFunc("GET /terms", s.handleTerms)
+	mux.HandleFunc("GET /account/delete", s.handleAccountDeleteForm)
+	mux.Handle("POST /account/delete", writes.rateLimit(http.HandlerFunc(s.handleAccountDelete)))
+	mux.HandleFunc("GET /account/deleted", s.handleAccountDeleted)
 	mux.HandleFunc("GET /sign/{handle}", s.handleGuestbookForm)
 	mux.Handle("POST /sign/{handle}", writes.rateLimit(http.HandlerFunc(s.handleGuestbookSign)))
 	mux.Handle("POST /guestbook/entries/{id}/hide", writes.rateLimit(http.HandlerFunc(s.handleGuestbookHide)))

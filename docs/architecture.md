@@ -73,7 +73,7 @@ page — which is the intended feedback, not a bug. Do not relax it.
 ## Blocks are semantic, themes are one CSS file
 
 A page is a list of semantic blocks with a fixed class contract
-(`.blk-photo`, `.blk-mood`, `.blk-links`, …). A theme is one stylesheet against
+(`.blk-photo`, `.blk-mood`, `.blk-legal`, `.blk-links`, …). A theme is one stylesheet against
 that contract, so a new theme is CSS with no Go changes.
 
 `.blk-photo` is the first block built to this contract: the owner's current

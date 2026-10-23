@@ -17,7 +17,7 @@ func claim(t *testing.T, srv *web.Server, sender *stubSender, address, handle st
 	h := srv.Handler()
 	c := completeLogin(t, h, randomAppHost, sender, srv.Config.BaseURL(), address)
 	request(t, h, http.MethodPost, randomAppHost, "/handle",
-		strings.NewReader(url.Values{"handle": {handle}}.Encode()), c).Body.Close()
+		strings.NewReader(url.Values{"handle": {handle}, "adult": {"yes"}}.Encode()), c).Body.Close()
 	return c
 }
 

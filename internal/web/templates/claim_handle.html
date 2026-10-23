@@ -15,11 +15,14 @@
 <p>Va a ser la dirección de tu página: https://&lt;nombre&gt;.retrat.ar. Usá minúsculas, números y guiones.</p>
 <form method="post" action="/handle">
 <div class="field"><label for="handle">Tu dirección</label>
-<input type="text" id="handle" name="handle" required></div>
+<input type="text" id="handle" name="handle" value="{{.Handle}}" required></div>
+<div class="field check"><label><input type="checkbox" name="adult" value="yes" required>
+Tengo 18 años o más y acepto los <a href="/terms">Términos</a> y la <a href="/privacy">Política de privacidad</a>.</label></div>
 <div class="actions"><button type="submit">Quiero esta</button></div>
 </form>
 {{with .Error}}<p role="alert">{{.}}</p>{{end}}
 </div>
 </main>
+<footer class="legal"><a href="/privacy">Privacidad</a> · <a href="/terms">Términos</a></footer>
 </body>
 </html>
