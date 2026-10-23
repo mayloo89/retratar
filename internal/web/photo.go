@@ -123,7 +123,7 @@ func (s *Server) handlePhotoUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	oldKey, err := s.Users.SetPhoto(r.Context(), u.ID, key, res.Width, res.Height, dayStart(now))
+	oldKey, err := s.Users.SetPhoto(r.Context(), u.ID, key, res.Width, res.Height, dayStart(now), now)
 	if err != nil {
 		s.removePhotoFile(r, key)
 		if errors.Is(err, user.ErrPhotoNotAllowed) {

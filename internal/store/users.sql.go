@@ -200,11 +200,11 @@ UPDATE users
 SET photo_key = $1,
     photo_width = $2,
     photo_height = $3,
-    photo_uploaded_at = now()
-FROM (SELECT u.id, u.photo_key AS old_key FROM users u WHERE u.id = $5 FOR UPDATE) old
+    photo_uploaded_at = $4
+FROM (SELECT u.id, u.photo_key AS old_key FROM users u WHERE u.id = $6 FOR UPDATE) old
 WHERE users.id = old.id
   AND users.can_upload_photos
-  AND (users.photo_uploaded_at IS NULL OR users.photo_uploaded_at < $4)
+  AND (users.photo_uploaded_at IS NULL OR users.photo_uploaded_at < $5)
 RETURNING coalesce(old.old_key, '')::text AS old_key
 `
 
@@ -212,6 +212,7 @@ type SetPhotoParams struct {
 	PhotoKey    *string
 	PhotoWidth  *int32
 	PhotoHeight *int32
+	UploadedAt  pgtype.Timestamptz
 	DayStart    pgtype.Timestamptz
 	ID          uuid.UUID
 }
@@ -228,11 +229,17 @@ type SetPhotoParams struct {
 // once the row lock is granted, so the caller deletes the file the database
 // really replaced. No rows means "not allowed": not allowlisted, or already
 // uploaded since @day_start.
+//
+// @uploaded_at comes from the application's clock, never from now() here. The
+// rule reads and writes one clock: @day_start and the User.UploadedPhotoOn
+// check both come from the app, so stamping with the database's clock would
+// let the two disagree (they only agree when the clocks happen to be close).
 func (q *Queries) SetPhoto(ctx context.Context, arg SetPhotoParams) (string, error) {
 	row := q.db.QueryRow(ctx, setPhoto,
 		arg.PhotoKey,
 		arg.PhotoWidth,
 		arg.PhotoHeight,
+		arg.UploadedAt,
 		arg.DayStart,
 		arg.ID,
 	)
