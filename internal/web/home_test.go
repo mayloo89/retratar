@@ -32,6 +32,12 @@ func TestAppHome_LinksToPageBaseURL(t *testing.T) {
 			if !strings.Contains(string(body), want) {
 				t.Errorf("home body = %s, want it to contain %q", body, want)
 			}
+			if !strings.Contains(string(body), "Ver mi página") {
+				t.Errorf("home body = %s, want the link text %q", body, "Ver mi página")
+			}
+			if addr := srv.Config.PageHostFor("ana"); !strings.Contains(string(body), `<span class="muted">`+addr+`</span>`) {
+				t.Errorf("home body = %s, want the bare address %q", body, addr)
+			}
 		})
 	}
 

@@ -26,6 +26,7 @@ type appHomeData struct {
 	DisplayName string
 	NameError   string
 	PageURL     string
+	PageAddress string
 	HasMood     bool
 	MoodLabel   string
 	MoodNote    string
@@ -112,6 +113,7 @@ func (s *Server) renderAppHomeMessages(w http.ResponseWriter, r *http.Request, s
 	// re-render this dashboard for one, so leave PageURL empty for it.
 	if u.Handle != "" {
 		data.PageURL = s.Config.PageBaseURL(u.Handle)
+		data.PageAddress = s.Config.PageHostFor(u.Handle)
 	}
 
 	m, err := s.Moods.CurrentMood(r.Context(), u.ID)

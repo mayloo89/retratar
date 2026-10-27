@@ -58,6 +58,11 @@ type pageData struct {
 	// RandomURL points at /random on the app surface.
 	RandomURL string
 
+	// AppURL is the app home. Pages cannot see a session, so every visitor
+	// gets the same link and the app decides where they belong. Absolute: a
+	// relative "/" would resolve against the pages host.
+	AppURL string
+
 	// PrivacyURL and TermsURL point at the legal pages on the app surface,
 	// absolute for the same reason SignURL is.
 	PrivacyURL string
@@ -121,6 +126,7 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 		OGDescription: ogcard.EmptyStateText,
 		SignURL:       s.Config.BaseURL() + "/sign/" + u.Handle,
 		RandomURL:     s.Config.BaseURL() + "/random",
+		AppURL:        s.Config.BaseURL() + "/",
 		PrivacyURL:    s.Config.BaseURL() + "/privacy",
 		TermsURL:      s.Config.BaseURL() + "/terms",
 	}

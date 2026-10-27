@@ -11,7 +11,7 @@
 <form method="post" action="/logout"><button class="quiet" type="submit">Salir</button></form></header>
 <main class="sheet">
 <h1>Tu página</h1>
-{{with .PageURL}}<div class="body flush"><p class="pageurl"><a href="{{.}}">{{.}}</a></p></div>{{end}}
+{{with .PageURL}}<div class="body flush"><p class="pageurl"><a href="{{.}}">Ver mi página</a> <span class="muted">{{$.PageAddress}}</span></p></div>{{end}}
 
 <section class="box"><h2 class="bar">Cómo estás</h2><div class="inner">
 {{if .HasMood}}

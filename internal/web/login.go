@@ -23,7 +23,16 @@ type loginConfirmData struct {
 	Nonce string
 }
 
-func (s *Server) handleLoginForm(w http.ResponseWriter, _ *http.Request) {
+// handleLoginForm shows the sign-in form. A visitor who is already signed in
+// is sent to / instead: pages link to the app, so an owner arrives here by
+// habit and the dashboard is where they belong. Switching accounts means
+// "Salir" first. Only GET redirects; POST /login and the token steps are
+// unchanged so completing a login as another account still works.
+func (s *Server) handleLoginForm(w http.ResponseWriter, r *http.Request) {
+	if _, ok := UserFrom(r.Context()); ok {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
 	s.renderTemplate(w, http.StatusOK, "login_form.html", loginFormData{})
 }
 

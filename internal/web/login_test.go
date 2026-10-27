@@ -363,3 +363,42 @@ func TestLoginComplete_RevokesIncomingSession(t *testing.T) {
 		t.Errorf("home status with the new cookie = %d, want 200", home.StatusCode)
 	}
 }
+
+func TestLoginForm_SignedInRedirectsHome(t *testing.T) {
+	srv, sender := newLoginServer(t)
+	h := srv.Handler()
+	host := srv.Config.AppHost
+	cookie := completeLogin(t, h, host, sender, srv.Config.BaseURL(), "ana@example.com")
+
+	resp := request(t, h, http.MethodGet, host, "/login", nil, cookie)
+	defer resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("GET /login status = %d, want %d", resp.StatusCode, http.StatusSeeOther)
+	}
+	if got := resp.Header.Get("Location"); got != "/" {
+		t.Errorf("Location = %q, want /", got)
+	}
+}
+
+func TestLoginForm_AnonymousShowsForm(t *testing.T) {
+	srv, sender := newLoginServer(t)
+	h := srv.Handler()
+	host := srv.Config.AppHost
+
+	check := func(name string, cookies ...*http.Cookie) {
+		t.Helper()
+		resp := request(t, h, http.MethodGet, host, "/login", nil, cookies...)
+		defer resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), `name="email"`) {
+			t.Errorf("%s: status = %d, body = %q, want 200 and the form", name, resp.StatusCode, body)
+		}
+	}
+
+	check("no cookie")
+	check("garbage cookie", &http.Cookie{Name: web.SessionCookieName, Value: "nope"})
+
+	cookie := completeLogin(t, h, host, sender, srv.Config.BaseURL(), "ana@example.com")
+	request(t, h, http.MethodPost, host, "/logout", nil, cookie).Body.Close()
+	check("revoked session", cookie)
+}
