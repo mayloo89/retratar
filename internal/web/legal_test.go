@@ -16,7 +16,7 @@ func TestLegalPages(t *testing.T) {
 		path, h1 string
 		extra    []string
 	}{
-		{"/privacy", "<h1>Política de privacidad</h1>", []string{"AGENCIA DE ACCESO A LA INFORMACIÓN PÚBLICA", "90 días", "Google Drive"}},
+		{"/privacy", "<h1>Política de privacidad</h1>", []string{"AGENCIA DE ACCESO A LA INFORMACIÓN PÚBLICA", "90 días", "Google Drive", "en hasta 7 días"}},
 		{"/terms", "<h1>Términos</h1>", nil},
 	} {
 		t.Run(tt.path, func(t *testing.T) {

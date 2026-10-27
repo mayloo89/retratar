@@ -11,6 +11,10 @@
 # Nothing old is deleted and no ping is sent unless every step before pruning
 # worked. Pruning itself can stop half done (local pruned, remote not); the next
 # successful run finishes it.
+# Retention is "no backup older than BACKUP_KEEP_DAYS days": files are pruned
+# once they are within an hour of that age, so tonight's run, which starts a few
+# seconds earlier than last week's, still removes last week's file. The privacy
+# policy promises deleted data leaves the backups within 7 days.
 # The remote is only ever written with `rclone copy` and pruned by age, never
 # `rclone sync`: sync mirrors deletions, so an emptied local directory would
 # wipe the remote copies.
@@ -123,20 +127,25 @@ photos_file="retratar-photos-$day.tgz.gpg"
 mv -f -- "$tmp_db" "$BACKUP_DIR/$db_file"
 mv -f -- "$tmp_photos" "$BACKUP_DIR/$photos_file"
 
-# 7. Off-host copy. copy, never sync.
+# 7. Off-host copy. copy, never sync. --ignore-existing never overwrites a remote
+# file: Drive keeps the old version of an overwritten file in its revision
+# history for 30 days, past the 7 days promised. A same-day re-run therefore
+# keeps the first upload on the remote and replaces only the local file.
 if [[ -n "$BACKUP_REMOTE" ]]; then
-  rclone copy "$BACKUP_DIR" "$BACKUP_REMOTE" --include 'retratar-*.gpg' ||
+  rclone copy "$BACKUP_DIR" "$BACKUP_REMOTE" --include 'retratar-*.gpg' --ignore-existing ||
     die "rclone copy to the remote failed"
 fi
 
 # 8. Prune, only now that the new backup exists, verified and copied.
-# find -mtime counts whole days rounded down: +6 matches files 7 days old or more.
+# Age is counted in minutes, not whole days (find -mtime rounds down), and one
+# hour short of the limit so a file made a few seconds later than tonight's
+# start is still pruned: 7 daily copies, none older than 7 days.
 # --drive-use-trash=false deletes for good: by default Drive's Trash keeps a
 # deleted file 30 more days. It is a global rclone flag; other backends ignore it.
-find "$BACKUP_DIR" -maxdepth 1 -name 'retratar-*.gpg' -mtime +$((BACKUP_KEEP_DAYS - 1)) -delete ||
+find "$BACKUP_DIR" -maxdepth 1 -name 'retratar-*.gpg' -mmin +$((BACKUP_KEEP_DAYS * 1440 - 60)) -delete ||
   die "local prune failed"
 if [[ -n "$BACKUP_REMOTE" ]]; then
-  rclone delete "$BACKUP_REMOTE" --include 'retratar-*.gpg' --min-age "${BACKUP_KEEP_DAYS}d" --drive-use-trash=false ||
+  rclone delete "$BACKUP_REMOTE" --include 'retratar-*.gpg' --min-age "$((BACKUP_KEEP_DAYS * 24 - 1))h" --drive-use-trash=false ||
     die "remote prune failed"
 fi
 
