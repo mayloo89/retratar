@@ -117,15 +117,114 @@ The output contains no personal data: no emails, handles, notes or entry text.
 Uploaded photos are files in the `photos` Docker volume, mounted at
 `/data/photos` in the app container. The database holds only each photo's key.
 
-Back the volume up with:
-
-    docker run --rm -v retratar_photos:/p:ro -v "$PWD":/b alpine tar czf /b/photos-$(date +%F).tgz -C /p .
+The volume is backed up nightly; see [Backups](#backups).
 
 Only allowlisted accounts can upload. Allow an account with SQL; there is no UI
 for it:
 
     docker exec <postgres container> psql -U retratar -d retratar \
       -c "UPDATE users SET can_upload_photos = true WHERE handle = '<handle>';"
+
+## Backups
+
+`deploy/backup.sh` writes two files every night, encrypted to a public key so the
+host cannot read its own backups:
+
+- `retratar-db-YYYY-MM-DD.dump.gpg`: `pg_dump -Fc` of the database;
+- `retratar-photos-YYYY-MM-DD.tgz.gpg`: the `photos` volume.
+
+They are kept in `BACKUP_DIR` (default `~/retratar-backups`), copied to an rclone
+remote, and both places are pruned to `BACKUP_KEEP_DAYS` days (default 7). If any
+step fails, nothing old is deleted and no ping is sent. Every variable is
+documented in the header of the script.
+
+Not covered: `deploy/retratar.env` and `deploy/postgres-tls/` (see Traps >
+Secrets), and point-in-time recovery. A restore loses up to a day.
+
+### One-time setup
+
+1. **On a trusted machine, not the host**, create a key pair for backups and
+   export the public key:
+
+       gpg --quick-gen-key "retratar backups" default default never
+       gpg --export --armor "retratar backups" > retratar-backups.pub
+
+   **The private key is the only way to restore.** Export it with a passphrase
+   (`gpg --export-secret-keys --armor`) and store it somewhere that is neither
+   the host nor the cloud folder, for example a password manager.
+2. **On the host**, import the public key and note its fingerprint:
+
+       gpg --import retratar-backups.pub
+       gpg --list-keys --fingerprint
+
+3. **On the host**, install rclone, create a remote and test it:
+
+       rclone config
+       rclone lsd <remote>:
+
+4. Run the script once by hand and check the result:
+
+       BACKUP_GPG_RECIPIENT=<fingerprint> BACKUP_REMOTE=<remote>:<path> \
+         deploy/backup.sh
+       ls -l ~/retratar-backups
+       rclone ls <remote>:<path>
+
+   Without `BACKUP_REMOTE` it makes local copies only, and says so.
+
+### Schedule
+
+As the deploy user (in the `docker` group, no sudo needed), nightly. `logger`
+sends the output to the journal, which already rotates:
+
+    30 4 * * * BACKUP_GPG_RECIPIENT=<fingerprint> BACKUP_REMOTE=<remote>:<path> BACKUP_PING_URL=<url> /path/to/checkout/deploy/backup.sh 2>&1 | logger -t retratar-backup
+
+With this pipe cron sees `logger`'s exit status, not the script's. A failure is
+caught by the missing ping, so point `BACKUP_PING_URL` at a dead-man's-switch
+monitor that alerts when the ping stops. The script takes its own lock, so an
+overlapping run exits instead of doubling up.
+
+Check that it ran:
+
+    journalctl -t retratar-backup --since yesterday
+
+### Restore
+
+On the trusted machine, with the private key. This restores into a throwaway
+Postgres and lists the photos; it touches nothing in production:
+
+    gpg -d retratar-db-DATE.dump.gpg > db.dump
+    docker run -d --name restore-test -e POSTGRES_PASSWORD=x postgres:18-alpine
+    docker cp db.dump restore-test:/db.dump
+    docker exec restore-test pg_restore -U postgres -d postgres --create --no-owner /db.dump   # creates the retratar database; no retratar role here
+    docker exec restore-test psql -U postgres -d retratar -c 'SELECT count(*) FROM users;'
+    gpg -d retratar-photos-DATE.tgz.gpg | tar tzf - | head
+
+Wait a few seconds after `docker run` for Postgres to accept connections. Then
+`docker rm -f restore-test` and delete `db.dump`.
+
+**Test a restore once a month.** A backup that has never been restored isn't a
+backup.
+
+**A real restore into production.** The private key never goes to the host, so
+decrypt on the trusted machine, copy the two plain files to the host over the
+LAN, and delete them from both machines when done.
+
+    gpg -d retratar-db-DATE.dump.gpg > db.dump
+    gpg -d retratar-photos-DATE.tgz.gpg > photos.tgz
+
+On the host, from the checkout:
+
+    docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env stop app
+    docker exec -i retratar-postgres-1 pg_restore -U retratar -d retratar \
+      --clean --if-exists --no-owner < db.dump
+    docker run --rm -i --user 65532:65532 -v retratar_photos:/p alpine:3 \
+      tar xzf - -C /p < photos.tgz
+    docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env start app
+    rm db.dump photos.tgz
+
+`--clean --if-exists` replaces the tables in place. The untar adds the files from
+the backup and overwrites same-named ones; it does not remove photos uploaded
+since. Check the site, then confirm with the Stats command above.
 
 ## Traps
 
