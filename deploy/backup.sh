@@ -8,7 +8,9 @@
 # then copies them to an rclone remote (if set), prunes anything older than
 # BACKUP_KEEP_DAYS locally and remotely, and pings a dead-man's-switch URL.
 #
-# Nothing old is deleted and no ping is sent unless every earlier step worked.
+# Nothing old is deleted and no ping is sent unless every step before pruning
+# worked. Pruning itself can stop half done (local pruned, remote not); the next
+# successful run finishes it.
 # The remote is only ever written with `rclone copy` and pruned by age, never
 # `rclone sync`: sync mirrors deletions, so an emptied local directory would
 # wipe the remote copies.
@@ -106,7 +108,9 @@ docker run --rm --user 65532:65532 --network none -v "$PHOTOS_VOLUME":/p:ro alpi
   encrypt --output "$tmp_photos" ||
   die "photos archive failed"
 
-# 5. Verify: non-empty, and a complete encrypted message rather than a truncated one.
+# 5. Verify: non-empty, and parses as an OpenPGP message. Without the private
+# key gpg cannot look inside the encrypted packet, so this does not prove the
+# stream is complete; that comes from pipefail plus gpg's own exit status above.
 for f in "$tmp_db" "$tmp_photos"; do
   [[ -s "$f" ]] || die "$(basename "$f") is empty"
   gpg --batch --list-packets "$f" >/dev/null 2>&1 || die "$(basename "$f") is not a valid encrypted file"

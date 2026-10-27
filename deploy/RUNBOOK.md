@@ -134,9 +134,15 @@ host cannot read its own backups:
 - `retratar-photos-YYYY-MM-DD.tgz.gpg`: the `photos` volume.
 
 They are kept in `BACKUP_DIR` (default `~/retratar-backups`), copied to an rclone
-remote, and both places are pruned to `BACKUP_KEEP_DAYS` days (default 7). If any
-step fails, nothing old is deleted and no ping is sent. Every variable is
-documented in the header of the script.
+remote, and both places are pruned to `BACKUP_KEEP_DAYS` days (default 7): no
+backup is kept longer than that. A failure before pruning deletes nothing old and
+sends no ping. A failure during pruning can leave it half done; the next
+successful run finishes it. Every variable is documented in the header of the
+script.
+
+The privacy policy names the backup provider (Google Drive) and promises that
+deleted data leaves the backups within 7 days. Changing the provider, or keeping
+backups longer than 7 days, means changing `privacy.html` first.
 
 Not covered: `deploy/retratar.env` and `deploy/postgres-tls/` (see Traps >
 Secrets), and point-in-time recovery. A restore loses up to a day.
