@@ -117,15 +117,164 @@ The output contains no personal data: no emails, handles, notes or entry text.
 Uploaded photos are files in the `photos` Docker volume, mounted at
 `/data/photos` in the app container. The database holds only each photo's key.
 
-Back the volume up with:
-
-    docker run --rm -v retratar_photos:/p:ro -v "$PWD":/b alpine tar czf /b/photos-$(date +%F).tgz -C /p .
+The volume is backed up nightly; see [Backups](#backups).
 
 Only allowlisted accounts can upload. Allow an account with SQL; there is no UI
 for it:
 
     docker exec <postgres container> psql -U retratar -d retratar \
       -c "UPDATE users SET can_upload_photos = true WHERE handle = '<handle>';"
+
+## Backups
+
+`deploy/backup.sh` writes two files every night, encrypted to a public key so the
+host cannot read its own backups:
+
+- `retratar-db-YYYY-MM-DD.dump.gpg`: `pg_dump -Fc` of the database;
+- `retratar-photos-YYYY-MM-DD.tgz.gpg`: the `photos` volume.
+
+They are kept in `BACKUP_DIR` (default `~/retratar-backups`), copied to an rclone
+remote, and both places are pruned to `BACKUP_KEEP_DAYS` days (default 7): no
+backup is kept longer than that. A failure before pruning deletes nothing old and
+sends no ping. A failure during pruning can leave it half done; the next
+successful run finishes it. Every variable is documented in the header of the
+script.
+
+The privacy policy names the backup provider (Google Drive) and promises that
+deleted data leaves the backups within 7 days. Changing the provider, or keeping
+backups longer than 7 days, means changing `privacy.html` first.
+
+Not covered: `deploy/retratar.env` and `deploy/postgres-tls/` (see Traps >
+Secrets), and point-in-time recovery. A restore loses up to a day.
+
+### One-time setup
+
+1. **On a trusted machine, not the host**, create a key pair for backups and
+   export the public key:
+
+       gpg --quick-gen-key "retratar backups" default default never
+       gpg --export --armor "retratar backups" > retratar-backups.pub
+
+   **The private key is the only way to restore.** Export it with a passphrase
+   (`gpg --export-secret-keys --armor`) and store it somewhere that is neither
+   the host nor the cloud folder, for example a password manager.
+2. **On the host**, import the public key and note its fingerprint:
+
+       gpg --import retratar-backups.pub
+       gpg --list-keys --fingerprint
+
+3. **On the host**, install rclone, create a remote and test it. The remote must
+   be Google Drive, because the privacy policy names it:
+
+       rclone config
+       rclone lsd <remote>:
+
+   The script deletes expired files with `--drive-use-trash=false`, so they are
+   gone at once instead of sitting 30 more days in Drive's Trash. If the Drive web
+   UI ever shows retratar files in the Trash, empty it.
+
+4. Run the script once by hand and check the result:
+
+       BACKUP_GPG_RECIPIENT=<fingerprint> BACKUP_REMOTE=<remote>:<path> \
+         deploy/backup.sh
+       ls -l ~/retratar-backups
+       rclone ls <remote>:<path>
+
+   Without `BACKUP_REMOTE` it makes local copies only, and says so.
+
+### Schedule
+
+As the deploy user (in the `docker` group, no sudo needed), nightly. `logger`
+sends the output to the journal, which already rotates:
+
+    30 4 * * * BACKUP_GPG_RECIPIENT=<fingerprint> BACKUP_REMOTE=<remote>:<path> BACKUP_PING_URL=<url> /path/to/checkout/deploy/backup.sh 2>&1 | logger -t retratar-backup
+
+With this pipe cron sees `logger`'s exit status, not the script's. A failure is
+caught by the missing ping, so point `BACKUP_PING_URL` at a dead-man's-switch
+monitor that alerts when the ping stops. The script takes its own lock, so an
+overlapping run exits instead of doubling up.
+
+Check that it ran:
+
+    journalctl -t retratar-backup --since yesterday
+
+### Restore
+
+Set a restrictive umask first in every shell you decrypt in: the plaintext
+files hold the whole database and every photo.
+
+    umask 077
+
+On the trusted machine, with the private key. This restores into a throwaway
+Postgres and lists the photos; it touches nothing in production:
+
+    gpg -d retratar-db-DATE.dump.gpg > db.dump
+    docker run -d --name restore-test -e POSTGRES_PASSWORD=x postgres:18-alpine
+    docker cp db.dump restore-test:/db.dump
+    docker exec restore-test pg_restore -U postgres -d postgres --create --no-owner /db.dump   # creates the retratar database; no retratar role here
+    docker exec restore-test psql -U postgres -d retratar -c 'SELECT count(*) FROM users;'
+    gpg -d retratar-photos-DATE.tgz.gpg | tar tzf - | head
+
+Wait a few seconds after `docker run` for Postgres to accept connections. Then
+`docker rm -f restore-test` and delete `db.dump`.
+
+**Test a restore once a month.** A backup that has never been restored isn't a
+backup.
+
+### Restore into production
+
+The private key never goes to the host. On the trusted machine, with
+`umask 077` set, decrypt both files, then copy them to the host over the LAN and
+restrict them there:
+
+    gpg -d retratar-db-DATE.dump.gpg > db.dump
+    gpg -d retratar-photos-DATE.tgz.gpg > photos.tgz
+
+    chmod 600 db.dump photos.tgz        # on the host, after copying
+
+Paste the steps below one at a time, from the checkout on the host. **If any
+step fails, stop there**: do not run the next one, and do not start the app.
+Step 2 keeps a dump of the current database for exactly that case.
+
+1. Stop the app.
+
+       docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env stop app
+
+2. Dump the current database first, and check the dump is not empty.
+
+       docker exec retratar-postgres-1 pg_dump -U retratar -d retratar -Fc > pre-restore-$(date +%F).dump
+       test -s pre-restore-$(date +%F).dump && echo ok
+
+3. Recreate the database empty. The app is stopped, so nothing is connected.
+   `ssl = on` is set cluster-wide with `ALTER SYSTEM`, so dropping the database
+   does not undo it.
+
+       docker exec retratar-postgres-1 psql -U retratar -d postgres -c 'DROP DATABASE retratar' -c 'CREATE DATABASE retratar'
+
+4. Restore into the empty database. No `--clean`. `--single-transaction` and
+   `--exit-on-error` make a bad dump fail as a whole: the database stays empty
+   rather than half restored.
+
+       docker exec -i retratar-postgres-1 pg_restore -U retratar -d retratar --no-owner --single-transaction --exit-on-error < db.dump
+
+5. Bring the schema up to the version of the app you are about to start.
+
+       docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env run --rm app -migrate
+
+6. Empty the photos volume, then extract. Photos uploaded after the backup have
+   no row in the restored database, so they must not stay behind. Both commands
+   run as uid 65532, which owns the volume's root.
+
+       docker run --rm --user 65532:65532 -v retratar_photos:/p alpine:3 find /p -mindepth 1 -delete
+       docker run --rm -i --user 65532:65532 -v retratar_photos:/p alpine:3 tar xzf - -C /p < photos.tgz
+
+7. Start the app, then check it: the Stats command above, and a page with a
+   photo.
+
+       docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env start app
+
+8. Delete `db.dump` and `photos.tgz` on both machines. Keep
+   `pre-restore-*.dump` until the site is confirmed good, then delete it too.
 
 ## Traps
 
