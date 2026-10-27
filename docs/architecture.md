@@ -79,6 +79,15 @@ that contract, so a new theme is CSS with no Go changes.
 `.blk-photo` is the first block built to this contract: the owner's current
 photo, a matted print under the identity header. The rest are still to come.
 
+The default theme's colours and fonts are slots: custom properties on `<body>`
+(`--s-bg`, `--s-sheet`, `--s-text`, `--s-link`, `--s-name`, `--s-bar-bg`,
+`--s-bar-fg`, `--s-font-head`, `--s-font-body`), each defaulting to what the
+mood gives. Every rule reads slots, never the mood, so a per-page stylesheet
+can set just the ones an owner chose. `internal/style` mirrors the slots, their
+per-mood defaults and the font list, and tests keep it in sync with
+`theme.css`. Fonts are self-hosted at `/fonts/` on both hosts
+(`internal/web/static/fonts/README.md`).
+
 Get this wrong early and every new theme becomes a code change, and themes stop
 shipping.
 

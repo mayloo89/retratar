@@ -1,38 +1,155 @@
-/* retratar default theme, "Página 2004": one framed sheet on a mood-tinted,
- * diagonally striped background; mood-coloured title bars; system fonts only.
+/* retratar default theme, "Página 2004": one framed sheet on a striped
+ * background; title bars; one self-hosted or system font family for headings
+ * and one for text.
  *
  * One stylesheet, one class contract: .blk-* names blocks, .mood-<key>
  * tints the page. A future theme is another file against this same
  * contract, not a code change — see docs/architecture.md.
+ *
+ * Every colour and font below reads a slot, a custom property on <body>:
+ *
+ *   --s-bg            Fondo                      --s-bar-bg    Barras de título
+ *   --s-sheet         Hoja                       --s-bar-fg    Texto de las barras
+ *   --s-text          Texto                      --s-font-head Tipografía de los títulos
+ *   --s-link          Links                      --s-font-body Tipografía del texto
+ *   --s-name          Nombre
+ *
+ * plus --s-text-soft, an internal one the editor does not show. Each slot
+ * defaults to what the mood gives; the mood is only the default. An owner
+ * stylesheet sets only the slots the owner chose, and everything else keeps
+ * following the mood. No rule outside the mood rules, the slot defaults and
+ * the mood box below may read --mood-*, --paper or --ink, or an owner's
+ * colour would be ignored there; a test enforces it.
+ *
+ * The "cómo estoy" box keeps the mood colours unless <body> has the class
+ * own-mood-box. Its fonts always follow the owner.
+ *
+ * internal/style mirrors this file — the slots, each slot's default under
+ * each mood and the font list — and a test keeps the two in sync. Fonts are
+ * self-hosted under /fonts/, never loaded from a third party.
  */
 
+/* Self-hosted fonts, served by the app at /fonts/. The name carries a hash of
+ * the file, so the cache can be immutable. A browser downloads one only when
+ * a page's font stack reaches it. internal/style lists them. Faces with one
+ * weight cover bold too, so the browser does not fake it. */
+@font-face { font-family: "r-verdana"; font-weight: 400; font-display: swap;
+	src: url(/fonts/verdana-regular.2b93f3.woff2) format("woff2"); }
+@font-face { font-family: "r-verdana"; font-weight: 700; font-display: swap;
+	src: url(/fonts/verdana-bold.c39cf9.woff2) format("woff2"); }
+@font-face { font-family: "r-trebuchet"; font-weight: 400; font-display: swap;
+	src: url(/fonts/trebuchet-regular.92117c.woff2) format("woff2"); }
+@font-face { font-family: "r-trebuchet"; font-weight: 700; font-display: swap;
+	src: url(/fonts/trebuchet-bold.8e483a.woff2) format("woff2"); }
+@font-face { font-family: "r-arial"; font-weight: 400; font-display: swap;
+	src: url(/fonts/arial-regular.5e8744.woff2) format("woff2"); }
+@font-face { font-family: "r-arial"; font-weight: 700; font-display: swap;
+	src: url(/fonts/arial-bold.6c49ee.woff2) format("woff2"); }
+@font-face { font-family: "r-georgia"; font-weight: 400; font-display: swap;
+	src: url(/fonts/georgia-regular.147d0c.woff2) format("woff2"); }
+@font-face { font-family: "r-georgia"; font-weight: 700; font-display: swap;
+	src: url(/fonts/georgia-bold.98cb1f.woff2) format("woff2"); }
+@font-face { font-family: "r-times"; font-weight: 400; font-display: swap;
+	src: url(/fonts/times-regular.a27fa8.woff2) format("woff2"); }
+@font-face { font-family: "r-times"; font-weight: 700; font-display: swap;
+	src: url(/fonts/times-bold.bdfa09.woff2) format("woff2"); }
+@font-face { font-family: "r-tahoma"; font-weight: 400; font-display: swap;
+	src: url(/fonts/tahoma-regular.5106a8.woff2) format("woff2"); }
+@font-face { font-family: "r-tahoma"; font-weight: 700; font-display: swap;
+	src: url(/fonts/tahoma-bold.b3b1bc.woff2) format("woff2"); }
+@font-face { font-family: "r-courier"; font-weight: 400; font-display: swap;
+	src: url(/fonts/courier-regular.54ed37.woff2) format("woff2"); }
+@font-face { font-family: "r-courier"; font-weight: 700; font-display: swap;
+	src: url(/fonts/courier-bold.8e218f.woff2) format("woff2"); }
+@font-face { font-family: "r-comic"; font-weight: 400; font-display: swap;
+	src: url(/fonts/comic-regular.28eec8.woff2) format("woff2"); }
+@font-face { font-family: "r-comic"; font-weight: 700; font-display: swap;
+	src: url(/fonts/comic-bold.fb07f2.woff2) format("woff2"); }
+@font-face { font-family: "r-impact"; font-weight: 400 700; font-display: swap;
+	src: url(/fonts/impact-regular.20ba96.woff2) format("woff2"); }
+@font-face { font-family: "r-pixel"; font-weight: 400 700; font-display: swap;
+	src: url(/fonts/pixel-regular.48d76f.woff2) format("woff2"); }
+@font-face { font-family: "r-terminal"; font-weight: 400 700; font-display: swap;
+	src: url(/fonts/terminal-regular.cd3869.woff2) format("woff2"); }
+@font-face { font-family: "r-script"; font-weight: 400 700; font-display: swap;
+	src: url(/fonts/script-regular.90d292.woff2) format("woff2"); }
+@font-face { font-family: "r-marker"; font-weight: 400 700; font-display: swap;
+	src: url(/fonts/marker-regular.d8228f.woff2) format("woff2"); }
+@font-face { font-family: "r-typewriter"; font-weight: 400 700; font-display: swap;
+	src: url(/fonts/typewriter-regular.317376.woff2) format("woff2"); }
+@font-face { font-family: "r-gothic"; font-weight: 400 700; font-display: swap;
+	src: url(/fonts/gothic-regular.6d4789.woff2) format("woff2"); }
+@font-face { font-family: "r-round"; font-weight: 400; font-display: swap;
+	src: url(/fonts/round-regular.5d7960.woff2) format("woff2"); }
+@font-face { font-family: "r-round"; font-weight: 700; font-display: swap;
+	src: url(/fonts/round-bold.39e40b.woff2) format("woff2"); }
+
+/* --paper is oklch(0.995 0.004 90) and --ink is oklch(0.27 0.012 90), as the
+ * nearest sRGB hex: the colour picker and internal/style need hex. */
 :root {
-	--paper: oklch(0.995 0.004 90);
-	--ink: oklch(0.27 0.012 90);
+	--paper: #fefdfa;
+	--ink: #292620;
 	--ink-soft: oklch(0.42 0.012 90);
 }
 
+/* The slots and what they default to. An owner stylesheet sets only the ones
+ * the owner chose. */
 body {
-	--rule: color-mix(in oklab, var(--mood-fg) 40%, var(--paper));
-	--tint: color-mix(in oklab, var(--mood-bg) 55%, var(--paper));
+	--s-bg: var(--mood-bg);
+	--s-sheet: var(--paper);
+	--s-text: var(--ink);
+	--s-link: var(--mood-fg);
+	--s-name: var(--mood-fg);
+	--s-bar-bg: var(--mood-fg);
+	--s-bar-fg: var(--paper);
+	--s-text-soft: var(--ink-soft);
+	--s-font-head: "Trebuchet MS", "Lucida Grande", "r-trebuchet", sans-serif;
+	--s-font-body: Verdana, Geneva, "DejaVu Sans", "r-verdana", sans-serif;
 	margin: 0;
 	min-height: 100vh;
 	box-sizing: border-box;
 	padding: 18px 10px 28px;
-	color: var(--ink);
-	font: 15px/1.55 Verdana, Geneva, "DejaVu Sans", sans-serif;
-	background-color: var(--mood-bg);
+	color: var(--s-text);
+	font: 15px/1.55 var(--s-font-body);
+	background-color: var(--s-bg);
 	background-image: repeating-linear-gradient(45deg,
-		color-mix(in oklab, var(--mood-fg) 8%, transparent) 0 2px, transparent 2px 8px);
+		color-mix(in oklab, var(--s-name) 8%, transparent) 0 2px, transparent 2px 8px);
+}
+
+/* --rule and --tint are computed from the slots where they are declared, so
+ * the mood box, which redefines slots below, has to declare them again. */
+body,
+.blk-mood {
+	--rule: color-mix(in oklab, var(--s-name) 40%, var(--s-sheet));
+	--tint: color-mix(in oklab, var(--s-bg) 55%, var(--s-sheet));
+}
+
+/* "cómo estoy" keeps the mood colours unless the owner opts out with the
+ * own-mood-box class on <body>. Colours only: its fonts stay the owner's.
+ * color and background are set here too, because color inherits as a
+ * computed value and would carry the owner's text colour into the box. */
+body:not(.own-mood-box) .blk-mood {
+	--s-sheet: var(--paper);
+	--s-text: var(--ink);
+	--s-text-soft: var(--ink-soft);
+	--s-link: var(--mood-fg);
+	--s-name: var(--mood-fg);
+	--s-bar-bg: var(--mood-fg);
+	--s-bar-fg: var(--paper);
+}
+
+.blk-mood {
+	background: var(--s-sheet);
+	color: var(--s-text);
 }
 
 a {
-	color: var(--mood-fg);
+	color: var(--s-link);
 	text-underline-offset: 0.15em;
 }
 
 a:focus-visible {
-	outline: 2px dashed var(--mood-fg);
+	outline: 2px dashed var(--s-link);
 	outline-offset: 3px;
 	text-decoration: none;
 }
@@ -55,8 +172,8 @@ a:focus-visible {
 .blk-sheet {
 	max-width: 360px;
 	margin: 0 auto;
-	background: var(--paper);
-	border: 1px solid var(--mood-fg);
+	background: var(--s-sheet);
+	border: 1px solid var(--s-name);
 }
 
 /* Identity: the name dominates; the address is quiet. */
@@ -75,25 +192,25 @@ a:focus-visible {
 	height: 76px;
 	display: grid;
 	place-items: center;
-	background: var(--paper);
-	border: 3px double var(--mood-fg);
-	font: bold 40px/1 "Trebuchet MS", "Lucida Grande", sans-serif;
-	color: var(--mood-fg);
+	background: var(--s-sheet);
+	border: 3px double var(--s-name);
+	font: bold 40px/1 var(--s-font-head);
+	color: var(--s-name);
 }
 
 .blk-name {
 	margin: 0;
 	min-width: 0;
 	overflow-wrap: anywhere;
-	font: bold clamp(34px, 10vw, 46px)/1 "Trebuchet MS", "Lucida Grande", sans-serif;
+	font: bold clamp(34px, 10vw, 46px)/1 var(--s-font-head);
 	letter-spacing: -0.01em;
-	color: var(--mood-fg);
+	color: var(--s-name);
 }
 
 .blk-address {
 	margin: 6px 0 0;
 	font-size: 12px;
-	color: var(--ink-soft);
+	color: var(--s-text-soft);
 	overflow-wrap: anywhere;
 }
 
@@ -101,7 +218,7 @@ a:focus-visible {
 .blk-photo {
 	margin: 12px 12px 0;
 	padding: 8px;
-	background: var(--paper);
+	background: var(--s-sheet);
 	border: 1px solid var(--rule);
 }
 
@@ -110,10 +227,10 @@ a:focus-visible {
 	width: 100%;
 	height: auto;
 	box-sizing: border-box;
-	border: 3px double var(--mood-fg);
+	border: 3px double var(--s-name);
 }
 
-/* Boxes with title bars. The bars carry the mood colour. */
+/* Boxes with title bars. */
 .blk-box {
 	margin: 12px;
 	border: 1px solid var(--rule);
@@ -122,22 +239,30 @@ a:focus-visible {
 .blk-bar {
 	margin: 0;
 	padding: 3px 8px;
-	background: var(--mood-fg);
-	color: var(--paper);
+	background: var(--s-bar-bg);
+	color: var(--s-bar-fg);
 	/* Period bevel: a light top edge and a dark bottom edge, as on 2004 title bars. */
-	border-top: 1px solid color-mix(in oklab, var(--mood-fg) 55%, var(--paper));
-	border-bottom: 1px solid color-mix(in oklab, var(--mood-fg) 70%, black);
-	font: bold 15px/1.35 "Trebuchet MS", "Lucida Grande", sans-serif;
+	border-top: 1px solid color-mix(in oklab, var(--s-bar-bg) 55%, var(--s-sheet));
+	border-bottom: 1px solid color-mix(in oklab, var(--s-bar-bg) 70%, black);
+	font: bold 15px/1.35 var(--s-font-head);
 }
 
 .blk-inner {
 	padding: 10px 10px 11px;
 }
 
+/* The one rule that reads the mood directly: the label is the mood, whatever
+ * the owner chose. */
 .blk-mood-label {
 	margin: 0;
-	font: bold 19px/1.25 "Trebuchet MS", "Lucida Grande", sans-serif;
+	font: bold 19px/1.25 var(--s-font-head);
 	color: var(--mood-fg);
+}
+
+/* When the owner opts the box into their colours, the label follows them too:
+ * on the owner's sheet the mood colour can be nearly invisible. */
+body.own-mood-box .blk-mood-label {
+	color: var(--s-name);
 }
 
 .blk-mood-note {
@@ -149,7 +274,7 @@ a:focus-visible {
 .blk-mood-empty,
 .blk-guestbook-empty {
 	margin: 0;
-	color: var(--ink-soft);
+	color: var(--s-text-soft);
 }
 
 .blk-guestbook ul {
@@ -169,7 +294,7 @@ a:focus-visible {
 .blk-guestbook-meta {
 	margin: 0;
 	font-size: 12px;
-	color: var(--ink-soft);
+	color: var(--s-text-soft);
 }
 
 .blk-guestbook-meta a {
@@ -201,7 +326,7 @@ a:focus-visible {
 .blk-legal {
 	margin: 4px 12px 14px;
 	font-size: 12px;
-	color: var(--ink-soft);
+	color: var(--s-text-soft);
 	text-align: right;
 }
 

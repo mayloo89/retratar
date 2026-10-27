@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -207,13 +208,20 @@ func TestPage_AddressFollowsConfig(t *testing.T) {
 	}
 }
 
-func TestThemeCSS_NoShadowNoFontFace(t *testing.T) {
+func TestThemeCSS_NoShadowOnlyOwnFonts(t *testing.T) {
 	srv, _ := newLoginServer(t)
 
 	css := getBody(t, srv.Handler(), "ana.retrat.ar", "/theme.css")
-	for _, banned := range []string{"box-shadow", "@font-face"} {
+	for _, banned := range []string{"box-shadow", "@import"} {
 		if strings.Contains(css, banned) {
 			t.Errorf("theme.css contains %q, want none", banned)
+		}
+	}
+	// A font comes from this host's /fonts/, so font-src 'self' allows it and
+	// no visitor's address goes to a third party.
+	for _, m := range regexp.MustCompile(`url\(([^)]*)\)`).FindAllStringSubmatch(css, -1) {
+		if !strings.HasPrefix(m[1], "/fonts/") {
+			t.Errorf("theme.css has url(%s), want only /fonts/ urls", m[1])
 		}
 	}
 }
