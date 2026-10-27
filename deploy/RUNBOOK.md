@@ -194,6 +194,11 @@ Check that it ran:
 
 ### Restore
 
+Set a restrictive umask first in every shell you decrypt in: the plaintext
+files hold the whole database and every photo.
+
+    umask 077
+
 On the trusted machine, with the private key. This restores into a throwaway
 Postgres and lists the photos; it touches nothing in production:
 
@@ -210,26 +215,60 @@ Wait a few seconds after `docker run` for Postgres to accept connections. Then
 **Test a restore once a month.** A backup that has never been restored isn't a
 backup.
 
-**A real restore into production.** The private key never goes to the host, so
-decrypt on the trusted machine, copy the two plain files to the host over the
-LAN, and delete them from both machines when done.
+### Restore into production
+
+The private key never goes to the host. On the trusted machine, with
+`umask 077` set, decrypt both files, then copy them to the host over the LAN and
+restrict them there:
 
     gpg -d retratar-db-DATE.dump.gpg > db.dump
     gpg -d retratar-photos-DATE.tgz.gpg > photos.tgz
 
-On the host, from the checkout:
+    chmod 600 db.dump photos.tgz        # on the host, after copying
 
-    docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env stop app
-    docker exec -i retratar-postgres-1 pg_restore -U retratar -d retratar \
-      --clean --if-exists --no-owner < db.dump
-    docker run --rm -i --user 65532:65532 -v retratar_photos:/p alpine:3 \
-      tar xzf - -C /p < photos.tgz
-    docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env start app
-    rm db.dump photos.tgz
+Paste the steps below one at a time, from the checkout on the host. **If any
+step fails, stop there**: do not run the next one, and do not start the app.
+Step 2 keeps a dump of the current database for exactly that case.
 
-`--clean --if-exists` replaces the tables in place. The untar adds the files from
-the backup and overwrites same-named ones; it does not remove photos uploaded
-since. Check the site, then confirm with the Stats command above.
+1. Stop the app.
+
+       docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env stop app
+
+2. Dump the current database first, and check the dump is not empty.
+
+       docker exec retratar-postgres-1 pg_dump -U retratar -d retratar -Fc > pre-restore-$(date +%F).dump
+       test -s pre-restore-$(date +%F).dump && echo ok
+
+3. Recreate the database empty. The app is stopped, so nothing is connected.
+   `ssl = on` is set cluster-wide with `ALTER SYSTEM`, so dropping the database
+   does not undo it.
+
+       docker exec retratar-postgres-1 psql -U retratar -d postgres -c 'DROP DATABASE retratar' -c 'CREATE DATABASE retratar'
+
+4. Restore into the empty database. No `--clean`. `--single-transaction` and
+   `--exit-on-error` make a bad dump fail as a whole: the database stays empty
+   rather than half restored.
+
+       docker exec -i retratar-postgres-1 pg_restore -U retratar -d retratar --no-owner --single-transaction --exit-on-error < db.dump
+
+5. Bring the schema up to the version of the app you are about to start.
+
+       docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env run --rm app -migrate
+
+6. Empty the photos volume, then extract. Photos uploaded after the backup have
+   no row in the restored database, so they must not stay behind. Both commands
+   run as uid 65532, which owns the volume's root.
+
+       docker run --rm --user 65532:65532 -v retratar_photos:/p alpine:3 find /p -mindepth 1 -delete
+       docker run --rm -i --user 65532:65532 -v retratar_photos:/p alpine:3 tar xzf - -C /p < photos.tgz
+
+7. Start the app, then check it: the Stats command above, and a page with a
+   photo.
+
+       docker compose -f deploy/docker-compose.yml --env-file deploy/retratar.env start app
+
+8. Delete `db.dump` and `photos.tgz` on both machines. Keep
+   `pre-restore-*.dump` until the site is confirmed good, then delete it too.
 
 ## Traps
 
