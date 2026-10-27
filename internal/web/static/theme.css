@@ -29,6 +29,61 @@
  * self-hosted under /fonts/, never loaded from a third party.
  */
 
+/* Self-hosted fonts, served by the app at /fonts/. The name carries a hash of
+ * the file, so the cache can be immutable. A browser downloads one only when
+ * a page's font stack reaches it. internal/style lists them. Faces with one
+ * weight cover bold too, so the browser does not fake it. */
+@font-face { font-family: "r-verdana"; font-weight: 400; font-display: swap;
+	src: url(/fonts/verdana-regular.2b93f3.woff2) format("woff2"); }
+@font-face { font-family: "r-verdana"; font-weight: 700; font-display: swap;
+	src: url(/fonts/verdana-bold.c39cf9.woff2) format("woff2"); }
+@font-face { font-family: "r-trebuchet"; font-weight: 400; font-display: swap;
+	src: url(/fonts/trebuchet-regular.92117c.woff2) format("woff2"); }
+@font-face { font-family: "r-trebuchet"; font-weight: 700; font-display: swap;
+	src: url(/fonts/trebuchet-bold.8e483a.woff2) format("woff2"); }
+@font-face { font-family: "r-arial"; font-weight: 400; font-display: swap;
+	src: url(/fonts/arial-regular.5e8744.woff2) format("woff2"); }
+@font-face { font-family: "r-arial"; font-weight: 700; font-display: swap;
+	src: url(/fonts/arial-bold.6c49ee.woff2) format("woff2"); }
+@font-face { font-family: "r-georgia"; font-weight: 400; font-display: swap;
+	src: url(/fonts/georgia-regular.147d0c.woff2) format("woff2"); }
+@font-face { font-family: "r-georgia"; font-weight: 700; font-display: swap;
+	src: url(/fonts/georgia-bold.98cb1f.woff2) format("woff2"); }
+@font-face { font-family: "r-times"; font-weight: 400; font-display: swap;
+	src: url(/fonts/times-regular.a27fa8.woff2) format("woff2"); }
+@font-face { font-family: "r-times"; font-weight: 700; font-display: swap;
+	src: url(/fonts/times-bold.bdfa09.woff2) format("woff2"); }
+@font-face { font-family: "r-tahoma"; font-weight: 400; font-display: swap;
+	src: url(/fonts/tahoma-regular.5106a8.woff2) format("woff2"); }
+@font-face { font-family: "r-tahoma"; font-weight: 700; font-display: swap;
+	src: url(/fonts/tahoma-bold.b3b1bc.woff2) format("woff2"); }
+@font-face { font-family: "r-courier"; font-weight: 400; font-display: swap;
+	src: url(/fonts/courier-regular.54ed37.woff2) format("woff2"); }
+@font-face { font-family: "r-courier"; font-weight: 700; font-display: swap;
+	src: url(/fonts/courier-bold.8e218f.woff2) format("woff2"); }
+@font-face { font-family: "r-comic"; font-weight: 400; font-display: swap;
+	src: url(/fonts/comic-regular.28eec8.woff2) format("woff2"); }
+@font-face { font-family: "r-comic"; font-weight: 700; font-display: swap;
+	src: url(/fonts/comic-bold.fb07f2.woff2) format("woff2"); }
+@font-face { font-family: "r-impact"; font-weight: 400 700; font-display: swap;
+	src: url(/fonts/impact-regular.20ba96.woff2) format("woff2"); }
+@font-face { font-family: "r-pixel"; font-weight: 400 700; font-display: swap;
+	src: url(/fonts/pixel-regular.48d76f.woff2) format("woff2"); }
+@font-face { font-family: "r-terminal"; font-weight: 400 700; font-display: swap;
+	src: url(/fonts/terminal-regular.cd3869.woff2) format("woff2"); }
+@font-face { font-family: "r-script"; font-weight: 400 700; font-display: swap;
+	src: url(/fonts/script-regular.90d292.woff2) format("woff2"); }
+@font-face { font-family: "r-marker"; font-weight: 400 700; font-display: swap;
+	src: url(/fonts/marker-regular.d8228f.woff2) format("woff2"); }
+@font-face { font-family: "r-typewriter"; font-weight: 400 700; font-display: swap;
+	src: url(/fonts/typewriter-regular.317376.woff2) format("woff2"); }
+@font-face { font-family: "r-gothic"; font-weight: 400 700; font-display: swap;
+	src: url(/fonts/gothic-regular.6d4789.woff2) format("woff2"); }
+@font-face { font-family: "r-round"; font-weight: 400; font-display: swap;
+	src: url(/fonts/round-regular.5d7960.woff2) format("woff2"); }
+@font-face { font-family: "r-round"; font-weight: 700; font-display: swap;
+	src: url(/fonts/round-bold.39e40b.woff2) format("woff2"); }
+
 /* --paper is oklch(0.995 0.004 90) and --ink is oklch(0.27 0.012 90), as the
  * nearest sRGB hex: the colour picker and internal/style need hex. */
 :root {
@@ -48,8 +103,8 @@ body {
 	--s-bar-bg: var(--mood-fg);
 	--s-bar-fg: var(--paper);
 	--s-text-soft: var(--ink-soft);
-	--s-font-head: "Trebuchet MS", "Lucida Grande", sans-serif;
-	--s-font-body: Verdana, Geneva, "DejaVu Sans", sans-serif;
+	--s-font-head: "Trebuchet MS", "Lucida Grande", "r-trebuchet", sans-serif;
+	--s-font-body: Verdana, Geneva, "DejaVu Sans", "r-verdana", sans-serif;
 	margin: 0;
 	min-height: 100vh;
 	box-sizing: border-box;

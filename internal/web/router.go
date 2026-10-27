@@ -137,6 +137,7 @@ func (s *Server) appRoutes(writes, logins48 *rateLimiter) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 	mux.HandleFunc("GET /app.css", s.handleAppCSS)
+	mux.HandleFunc("GET /fonts/{file}", s.handleFont)
 	mux.HandleFunc("GET /{$}", s.handleAppHome)
 	mux.HandleFunc("GET /login", s.handleLoginForm)
 	mux.Handle("POST /login", writes.rateLimit(logins48.rateLimit(http.HandlerFunc(s.handleLoginRequest))))
@@ -174,6 +175,7 @@ func (s *Server) pageRoutes(reads *rateLimiter) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.handlePage)
 	mux.HandleFunc("GET /theme.css", s.handleTheme)
+	mux.HandleFunc("GET /fonts/{file}", s.handleFont)
 	mux.Handle("GET /og.png", reads.rateLimit(http.HandlerFunc(s.handleOGImage)))
 	mux.Handle("GET /photo/{file}", reads.rateLimit(http.HandlerFunc(s.handlePagePhoto)))
 	return mux

@@ -190,6 +190,23 @@ func (s *Server) handleAppCSS(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write(appCSS)
 }
 
+// handleFont serves one self-hosted font on either host: a page loads its fonts
+// from its own host, which is all font-src 'self' allows. The file name holds a
+// hash of the content, so the response is cacheable for good. An unknown name,
+// including any path trick, is a 404.
+func (s *Server) handleFont(w http.ResponseWriter, r *http.Request) {
+	data, ok := fontFiles[r.PathValue("file")]
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	// On the app host PrivateCache has already set no-store; this Set
+	// overrides it, on purpose, as handleAppCSS does.
+	w.Header().Set("Content-Type", "font/woff2")
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	_, _ = w.Write(data)
+}
+
 // initialOf returns the first rune of s, upper-cased. A rune, not a byte, so
 // it stays right for display names, which are not ASCII.
 func initialOf(s string) string {
