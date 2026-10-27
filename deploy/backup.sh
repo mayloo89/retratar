@@ -62,6 +62,13 @@ if [[ -n "$BACKUP_PING_URL" ]]; then
   command -v curl >/dev/null || die "BACKUP_PING_URL is set but curl is not on PATH"
 fi
 
+# docker run -v creates a missing volume, which would archive an empty one and
+# report success. Refuse both a missing volume and a missing container.
+docker volume inspect "$PHOTOS_VOLUME" >/dev/null 2>&1 ||
+  die "docker volume $PHOTOS_VOLUME does not exist (PHOTOS_VOLUME)"
+docker inspect "$PG_CONTAINER" >/dev/null 2>&1 ||
+  die "docker container $PG_CONTAINER does not exist (PG_CONTAINER)"
+
 mkdir -p "$BACKUP_DIR"
 chmod 0700 "$BACKUP_DIR"
 
