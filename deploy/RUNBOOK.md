@@ -157,10 +157,15 @@ Secrets), and point-in-time recovery. A restore loses up to a day.
        gpg --import retratar-backups.pub
        gpg --list-keys --fingerprint
 
-3. **On the host**, install rclone, create a remote and test it:
+3. **On the host**, install rclone, create a remote and test it. The remote must
+   be Google Drive, because the privacy policy names it:
 
        rclone config
        rclone lsd <remote>:
+
+   The script deletes expired files with `--drive-use-trash=false`, so they are
+   gone at once instead of sitting 30 more days in Drive's Trash. If the Drive web
+   UI ever shows retratar files in the Trash, empty it.
 
 4. Run the script once by hand and check the result:
 

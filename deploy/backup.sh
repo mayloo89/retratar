@@ -127,10 +127,12 @@ fi
 
 # 8. Prune, only now that the new backup exists, verified and copied.
 # find -mtime counts whole days rounded down: +6 matches files 7 days old or more.
+# --drive-use-trash=false deletes for good: by default Drive's Trash keeps a
+# deleted file 30 more days. It is a global rclone flag; other backends ignore it.
 find "$BACKUP_DIR" -maxdepth 1 -name 'retratar-*.gpg' -mtime +$((BACKUP_KEEP_DAYS - 1)) -delete ||
   die "local prune failed"
 if [[ -n "$BACKUP_REMOTE" ]]; then
-  rclone delete "$BACKUP_REMOTE" --include 'retratar-*.gpg' --min-age "${BACKUP_KEEP_DAYS}d" ||
+  rclone delete "$BACKUP_REMOTE" --include 'retratar-*.gpg' --min-age "${BACKUP_KEEP_DAYS}d" --drive-use-trash=false ||
     die "remote prune failed"
 fi
 
