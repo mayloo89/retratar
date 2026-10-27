@@ -217,3 +217,23 @@ func TestThemeCSS_NoShadowNoFontFace(t *testing.T) {
 		}
 	}
 }
+
+func TestPage_LinksToApp(t *testing.T) {
+	srv, sender := newLoginServer(t)
+	h := srv.Handler()
+	claim(t, srv, sender, "ana@example.com", "ana")
+
+	page := request(t, h, http.MethodGet, "ana.retrat.ar", "/", nil)
+	defer page.Body.Close() //nolint:errcheck // httptest body close cannot fail
+	b, _ := io.ReadAll(page.Body)
+	body := string(b)
+
+	link := `<a href="` + srv.Config.BaseURL() + `/">Hacé tu página en retratar</a>`
+	at := strings.Index(body, link)
+	if at < 0 {
+		t.Fatalf("page body = %q, want %q", body, link)
+	}
+	if legal := strings.Index(body, `class="blk-legal"`); legal < at {
+		t.Errorf("app link at %d, legal links at %d, want the app link first", at, legal)
+	}
+}

@@ -192,7 +192,8 @@ a:focus-visible {
 	font-weight: bold;
 }
 
-.blk-random {
+.blk-random,
+.blk-app {
 	margin: 4px 12px 14px;
 	text-align: right;
 }
