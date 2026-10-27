@@ -76,3 +76,17 @@ func TestThemeCSS_SlotsOnly(t *testing.T) {
 		}
 	}
 }
+
+// TestThemeCSS_OwnMoodBoxLabel checks that a box opted into the owner's
+// colours shows its label in them, not in the mood colour.
+func TestThemeCSS_OwnMoodBoxLabel(t *testing.T) {
+	for _, r := range cssRules(readTheme(t)) {
+		if r.selector == "body.own-mood-box .blk-mood-label" {
+			if got := declared(r, "color"); got != "var(--s-name)" {
+				t.Errorf("%q color = %q, want var(--s-name)", r.selector, got)
+			}
+			return
+		}
+	}
+	t.Error("theme.css has no body.own-mood-box .blk-mood-label rule")
+}

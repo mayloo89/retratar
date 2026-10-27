@@ -259,6 +259,12 @@ a:focus-visible {
 	color: var(--mood-fg);
 }
 
+/* When the owner opts the box into their colours, the label follows them too:
+ * on the owner's sheet the mood colour can be nearly invisible. */
+body.own-mood-box .blk-mood-label {
+	color: var(--s-name);
+}
+
 .blk-mood-note {
 	margin: 4px 0 0;
 	white-space: pre-line;
