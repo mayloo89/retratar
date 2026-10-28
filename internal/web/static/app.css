@@ -139,6 +139,25 @@ ul.entries { list-style: none; margin: 0; padding: 0; }
 .check label { display: flex; align-items: flex-start; gap: 8px; font-weight: normal; font-size: 14px; }
 .check input { flex: none; margin: 3px 0 0; width: 16px; height: 16px; accent-color: var(--mood-fg); }
 
+/* "Tu estilo": one row per colour or typeface. The label is the row's name,
+   then the control with its status, then Restablecer when the slot is
+   customised. */
+.slots { margin: 0; padding: 0; list-style: none; }
+.slot { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; align-items: center;
+  padding: 8px 0; border-top: 1px dotted var(--rule); }
+.slot:first-child { border-top: 0; padding-top: 0; }
+.slot label { grid-column: 1 / -1; margin: 0; }
+.slot-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+input[type="color"] { flex: none; width: 44px; height: 32px; padding: 0 2px; margin: 0;
+  border: 1px solid var(--line); background: var(--paper); border-radius: 0; }
+.hex { font: 13px/1 "Courier New", monospace; color: var(--ink-soft); }
+.st { font-size: 12px; }
+.st.own { font-weight: bold; color: var(--mood-fg); }
+select { min-height: 36px; max-width: 13rem; padding: 0 6px; font: 16px/1.4 Verdana, Geneva, "DejaVu Sans", sans-serif;
+  color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 0; }
+select:focus-visible, input[type="color"]:focus-visible { outline-offset: 1px; border-color: var(--mood-fg); }
+.slots + .check { margin-top: 10px; padding-top: 10px; border-top: 1px dotted var(--rule); }
+
 /* Privacy and terms: running text with section headings. */
 .prose h2 { margin: 18px 0 6px; font: bold 15px/1.35 "Trebuchet MS", "Lucida Grande", sans-serif; }
 .prose h2:first-child { margin-top: 0; }

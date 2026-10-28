@@ -52,4 +52,9 @@ var (
 	// upload allowlist, or it already uploaded one today. The two are not told
 	// apart; the caller checks the allowlist first when it needs to say which.
 	ErrPhotoNotAllowed = errors.New("photo upload not allowed")
+
+	// ErrInvalidStyle means a page style named a colour that is not #rrggbb, a
+	// slot that does not exist, or a font that is not in the registry; see
+	// [Service.SetStyle]. Nothing was stored.
+	ErrInvalidStyle = errors.New("invalid page style")
 )

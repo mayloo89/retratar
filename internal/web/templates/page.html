@@ -4,7 +4,11 @@
 <meta charset="utf-8">
 <title>{{.Name}}</title>
 <link rel="stylesheet" href="/theme.css">
-<meta property="og:type" content="website">
+{{if .Preview}}<link rel="stylesheet" href="{{.PreviewCSSURL}}">
+<link rel="stylesheet" href="/preview.css">
+<meta name="robots" content="noindex">
+{{else if .StyleVersion}}<link rel="stylesheet" href="/style.css?v={{.StyleVersion}}">
+{{end}}<meta property="og:type" content="website">
 <meta property="og:title" content="{{.Name}}">
 <meta property="og:description" content="{{.OGDescription}}">
 <meta property="og:url" content="{{.OGURL}}">
@@ -13,8 +17,14 @@
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 </head>
-<body class="mood-{{.MoodClass}}">
-<main class="blk-sheet">
+<body class="mood-{{.MoodClass}}{{if .OwnMoodBox}} own-mood-box{{end}}">
+{{if .Preview}}<form class="pv-bar" method="post" action="/style">
+<p>Así se va a ver tu página.</p>
+{{range .PreviewFields}}<input type="hidden" name="{{.Name}}" value="{{.Value}}">
+{{end}}<button class="pv-publish" name="action" value="publish">Publicar</button>
+<button class="pv-edit" name="action" value="edit">Seguir cambiando</button>
+</form>
+{{end}}<main class="blk-sheet">
 <header class="blk-identity">
 <div class="blk-frame" aria-hidden="true">{{.Initial}}</div>
 <div><h1 class="blk-name">{{.Name}}</h1><p class="blk-address">{{.Address}}</p></div>

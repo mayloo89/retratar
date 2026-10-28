@@ -120,8 +120,12 @@ func TestDeleteAccount_RemovesEverything(t *testing.T) {
 	e := newPhotoEnv(t)
 	s := seedAnaAndBob(t, e)
 
+	// Ana also has a published style, which must go with her.
+	e.publish(t, s.ana, "triste", with("c_bg", "#ff00cc", "f_head", "impact"))
+
 	// Prove the seed is not empty, or "gone" below would prove nothing.
 	for q, want := range map[string]int{
+		`SELECT count(*) FROM page_styles`:                                  1,
 		`SELECT count(*) FROM moods`:                                        1, // ana's
 		`SELECT count(*) FROM mood_history`:                                 2,
 		`SELECT count(*) FROM guestbook_entries`:                            2,
@@ -150,12 +154,13 @@ func TestDeleteAccount_RemovesEverything(t *testing.T) {
 	for q, want := range map[string]int{
 		`SELECT count(*) FROM users WHERE email = 'ana@example.com'`:                                         0,
 		`SELECT count(*) FROM sessions s JOIN users u ON u.id = s.user_id WHERE u.email = 'ana@example.com'`: 0,
-		`SELECT count(*) FROM moods`:                                               0,
-		`SELECT count(*) FROM mood_history`:                                        0,
-		`SELECT count(*) FROM login_tokens WHERE lower(email) = 'ana@example.com'`: 0,
-		`SELECT count(*) FROM guestbook_entries`:                                   0,
-		`SELECT count(*) FROM users WHERE email = 'bob@example.com'`:               1,
-		`SELECT count(*) FROM sessions`:                                            1, // bob's
+		`SELECT count(*) FROM page_styles`:                                                                   0,
+		`SELECT count(*) FROM moods`:                                                                         0,
+		`SELECT count(*) FROM mood_history`:                                                                  0,
+		`SELECT count(*) FROM login_tokens WHERE lower(email) = 'ana@example.com'`:                           0,
+		`SELECT count(*) FROM guestbook_entries`:                                                             0,
+		`SELECT count(*) FROM users WHERE email = 'bob@example.com'`:                                         1,
+		`SELECT count(*) FROM sessions`:                                                                      1, // bob's
 	} {
 		if got := e.count(t, q); got != want {
 			t.Errorf("after: %s = %d, want %d", q, got, want)
