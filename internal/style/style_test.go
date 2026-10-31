@@ -49,3 +49,44 @@ func lower(s string) string {
 	}
 	return string(b)
 }
+
+func TestParseHex(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		in     string
+		want   string
+		wantOK bool
+	}{
+		{"#abcdef", "#abcdef", true},
+		{"#AbCdEf", "#abcdef", true},
+		{"#000000", "#000000", true},
+		{"#00000f", "#00000f", true},
+		{"#FFFFFF", "#ffffff", true},
+		{"#abcde", "", false},
+		{"#abcdefg", "", false},
+		{"#abcdef0", "", false},
+		{"abcdef", "", false},
+		{"#gggggg", "", false},
+		{"#ab cdef", "", false},
+		// strconv.ParseUint would take a sign, so the shape check has to refuse
+		// these before it runs.
+		{"#+12345", "", false},
+		{"#-12345", "", false},
+		{"#0x1234", "", false},
+		{" #abcdef", "", false},
+		{"#abcdef\n", "", false},
+		{"#abcdef;}", "", false},
+		{"", "", false},
+		{"#", "", false},
+	}
+	for _, tt := range tests {
+		got, ok := style.ParseHex(tt.in)
+		if got != tt.want || ok != tt.wantOK {
+			t.Errorf("ParseHex(%q) = %q, %v, want %q, %v", tt.in, got, ok, tt.want, tt.wantOK)
+		}
+		if style.ValidHex(tt.in) != tt.wantOK {
+			t.Errorf("ValidHex(%q) = %v, want %v", tt.in, !tt.wantOK, tt.wantOK)
+		}
+	}
+}

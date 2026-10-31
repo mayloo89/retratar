@@ -81,9 +81,10 @@ type pageData struct {
 	// OwnMoodBox adds the own-mood-box class to <body>: the "cómo estoy" box
 	// takes the owner's colours. The class is a constant in the template.
 	OwnMoodBox bool
-	// StyleVersion is the owner's style stylesheet version (updated_at in Unix
-	// seconds), or zero when the page has no stylesheet of its own. Only a
-	// number ever reaches the link's query.
+	// StyleVersion is the owner's style stylesheet version: updated_at, as read
+	// back from the database, in Unix microseconds. Postgres keeps microseconds,
+	// so two publishes never share a version. Zero means the page has no
+	// stylesheet of its own. Only a number ever reaches the link's query.
 	StyleVersion int64
 
 	// Preview is set only by the owner's preview on the app host. The page then
@@ -177,7 +178,7 @@ func (s *Server) pageFor(ctx context.Context, u user.User, st style.Style) (page
 	}
 	// A style with no colour and no font has no stylesheet to link.
 	if st.CSS() != "" {
-		data.StyleVersion = st.UpdatedAt.Unix()
+		data.StyleVersion = st.UpdatedAt.UnixMicro()
 	}
 
 	if u.PhotoKey != "" {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -54,12 +53,20 @@ func (s *Service) GetStyle(ctx context.Context, id uuid.UUID) (style.Style, erro
 
 	st := style.Style{OwnMoodBox: row.OwnMoodBox, UpdatedAt: row.UpdatedAt.Time}
 	for _, slot := range style.Slots() {
-		if col := colorColumn(&row, slot.Key); col != nil && *col != nil {
-			if st.Colors == nil {
-				st.Colors = map[string]string{}
-			}
-			st.Colors[slot.Key] = **col
+		col := colorColumn(&row, slot.Key)
+		if col == nil || *col == nil {
+			continue
 		}
+		// The CHECK keeps the column well-formed; ParseHex is what makes the
+		// value one this program formatted.
+		hex, ok := style.ParseHex(**col)
+		if !ok {
+			continue
+		}
+		if st.Colors == nil {
+			st.Colors = map[string]string{}
+		}
+		st.Colors[slot.Key] = hex
 	}
 	st.HeadFont = knownFont(row.FontHead)
 	st.BodyFont = knownFont(row.FontBody)
@@ -94,11 +101,11 @@ func (s *Service) SetStyle(ctx context.Context, id uuid.UUID, st style.Style, no
 	}
 	for key, hex := range st.Colors {
 		col := colorColumn(&row, key)
-		if col == nil || !style.ValidHex(hex) {
+		parsed, ok := style.ParseHex(hex)
+		if col == nil || !ok {
 			return ErrInvalidStyle
 		}
-		lower := strings.ToLower(hex)
-		*col = &lower
+		*col = &parsed
 	}
 	for _, f := range []struct {
 		key string

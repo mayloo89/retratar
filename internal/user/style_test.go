@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/mayloo89/retratar/internal/style"
 	"github.com/mayloo89/retratar/internal/testdb"
 	"github.com/mayloo89/retratar/internal/user"
@@ -199,8 +201,12 @@ func TestPageStyles_ColumnsRejectBadShapes(t *testing.T) {
 		"font with space":   `INSERT INTO page_styles (user_id, font_body, updated_at) VALUES ($1, 'a b', now())`,
 		"empty font":        `INSERT INTO page_styles (user_id, font_head, updated_at) VALUES ($1, '', now())`,
 	} {
-		if _, err := pool.Exec(t.Context(), q, u.ID); err == nil {
-			t.Errorf("%s: insert succeeded, want a CHECK violation", name)
+		_, err := pool.Exec(t.Context(), q, u.ID)
+		// 23514 is check_violation: each case must be refused by its CHECK, not
+		// by something unrelated such as the primary key.
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) || pgErr.Code != "23514" {
+			t.Errorf("%s: error = %v, want a CHECK violation (23514)", name, err)
 		}
 	}
 }

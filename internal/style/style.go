@@ -9,8 +9,9 @@
 package style
 
 import (
+	"fmt"
 	"regexp"
-	"strings"
+	"strconv"
 )
 
 // Slot is one colour an owner can set. The seven slots are the only colour
@@ -95,9 +96,29 @@ func Default(slot, moodKey string) string {
 	return ""
 }
 
-var hexRE = regexp.MustCompile(`^#[0-9a-f]{6}$`)
+var hexRE = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+
+// ParseHex reads s as a #rrggbb colour, in either case, and returns it as
+// lower-case #rrggbb. Anything else, such as a short or long value, a missing
+// #, a non-hex digit or a sign, returns false.
+//
+// The result is built here from a number, not copied from s. Every colour that
+// enters a [Style] goes through it, so the colours that reach a stylesheet are
+// values this package formatted, whatever the request held. The shape is
+// checked first on purpose: ParseUint alone would take a leading "+".
+func ParseHex(s string) (string, bool) {
+	if !hexRE.MatchString(s) {
+		return "", false
+	}
+	n, err := strconv.ParseUint(s[1:], 16, 32)
+	if err != nil {
+		return "", false
+	}
+	return fmt.Sprintf("#%06x", n), true
+}
 
 // ValidHex reports whether s is a #rrggbb colour, in either case.
 func ValidHex(s string) bool {
-	return hexRE.MatchString(strings.ToLower(s))
+	_, ok := ParseHex(s)
+	return ok
 }

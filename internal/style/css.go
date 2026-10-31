@@ -55,18 +55,18 @@ func (s Style) Equal(o Style) bool {
 // It is built by hand, not with html/template, and needs no escaping, because
 // every value in it is either a constant of this package (a property name, a
 // font stack from the registry, the soft-text expression) or a colour that
-// passed [ValidHex]. A colour that did not, a slot or a font the registry does
+// passed [ParseHex], which formats it itself. A colour that did not, a slot or a font the registry does
 // not know, is skipped, never written. No user text reaches the output.
 //
 // Slots come out in [Slots] order, so equal styles give equal bytes.
 func (s Style) CSS() string {
 	var decls []string
 	for _, slot := range slots {
-		c, ok := s.Colors[slot.Key]
-		if !ok || !ValidHex(c) {
+		c, ok := parsed(s.Colors, slot.Key)
+		if !ok {
 			continue
 		}
-		decls = append(decls, slot.Property+": "+strings.ToLower(c)+";")
+		decls = append(decls, slot.Property+": "+c+";")
 	}
 	if f, ok := FontByKey(s.HeadFont); ok {
 		decls = append(decls, HeadFontProperty+": "+f.Stack+";")
@@ -77,7 +77,9 @@ func (s Style) CSS() string {
 	if len(decls) == 0 {
 		return ""
 	}
-	if hasValid(s.Colors, "text") || hasValid(s.Colors, "sheet") {
+	_, hasText := parsed(s.Colors, "text")
+	_, hasSheet := parsed(s.Colors, "sheet")
+	if hasText || hasSheet {
 		decls = append(decls, TextSoftProperty+": "+textSoft+";")
 	}
 
@@ -90,7 +92,11 @@ func (s Style) CSS() string {
 	return b.String()
 }
 
-func hasValid(colors map[string]string, key string) bool {
+// parsed returns the colour of a slot as [ParseHex] formats it.
+func parsed(colors map[string]string, key string) (string, bool) {
 	c, ok := colors[key]
-	return ok && ValidHex(c)
+	if !ok {
+		return "", false
+	}
+	return ParseHex(c)
 }

@@ -322,6 +322,7 @@ func TestStyleSubmit_InvalidInputIs422AndKeepsTheStoredStyle(t *testing.T) {
 	for name, f := range map[string]url.Values{
 		"bad hex":       styleForm("none", with("c_bg", "red")),
 		"short hex":     styleForm("none", with("c_link", "#abc")),
+		"signed hex":    styleForm("none", with("c_link", "#+12345")),
 		"injection":     styleForm("none", with("c_text", "#000000;}body{x:y")),
 		"unknown font":  styleForm("none", with("f_head", "wingdings")),
 		"missing slot":  styleForm("none", without("c_name")),
@@ -534,6 +535,7 @@ func TestStylePreviewCSS(t *testing.T) {
 		"empty colour":   "c_link=",
 		"bad own":        "own=yes",
 		"short hex":      "c_name=%23abc",
+		"signed hex":     "c_bg=%23%2B12345",
 		"font injection": "f_body=x%3Bbackground%3Aurl(//evil)",
 	} {
 		r := getReply(t, e, appHost, "/style/preview.css?"+q)
@@ -593,7 +595,7 @@ func TestStyleCSS_Served(t *testing.T) {
 	e.publish(t, c, "none", with("c_bg", "#ff00cc", "f_body", "comic"))
 
 	want := style.Style{Colors: map[string]string{"bg": "#ff00cc"}, BodyFont: "comic"}.CSS()
-	r := getReply(t, e, anaHost, fmt.Sprintf("/style.css?v=%d", e.clock.Now().Unix()))
+	r := getReply(t, e, anaHost, fmt.Sprintf("/style.css?v=%d", e.clock.Now().UnixMicro()))
 	wantStatus(t, r, http.StatusOK)
 	if string(r.Body) != want {
 		t.Errorf("body =\n%s\nwant\n%s", r.Body, want)
@@ -651,7 +653,7 @@ func TestPage_LinksTheOwnStylesheetOnlyWhenThereIsOne(t *testing.T) {
 
 	e.publish(t, c, "none", with("c_bg", "#ff00cc"))
 	page = string(getReply(t, e, anaHost, "/").Body)
-	link := fmt.Sprintf(`<link rel="stylesheet" href="/style.css?v=%d">`, e.clock.Now().Unix())
+	link := fmt.Sprintf(`<link rel="stylesheet" href="/style.css?v=%d">`, e.clock.Now().UnixMicro())
 	theme, own := strings.Index(page, `<link rel="stylesheet" href="/theme.css">`), strings.Index(page, link)
 	if theme < 0 || own < theme {
 		t.Errorf("theme at %d, style link at %d, want the style link after theme.css; head: %.500s", theme, own, page)
@@ -667,7 +669,7 @@ func TestPage_LinksTheOwnStylesheetOnlyWhenThereIsOne(t *testing.T) {
 	e.clock.Set(e.clock.Now().Add(90 * time.Second))
 	e.publish(t, c, "none", with("c_bg", "#00ff00", "f_head", "comic"))
 	page2 := string(getReply(t, e, anaHost, "/").Body)
-	if strings.Contains(page2, link) || !strings.Contains(page2, fmt.Sprintf(`href="/style.css?v=%d"`, e.clock.Now().Unix())) {
+	if strings.Contains(page2, link) || !strings.Contains(page2, fmt.Sprintf(`href="/style.css?v=%d"`, e.clock.Now().UnixMicro())) {
 		t.Errorf("the link did not move to the new version: %.600s", page2)
 	}
 }
@@ -688,4 +690,29 @@ func TestPage_OwnMoodBoxClassOnlyWhenSet(t *testing.T) {
 	e.publish(t, c, "fiesta", with("c_bg", "#101010"))
 	page = string(getReply(t, e, anaHost, "/").Body)
 	wantContains(t, page, `<body class="mood-fiesta">`)
+}
+
+func TestPage_EachPublishHasItsOwnStyleVersion(t *testing.T) {
+	e := newPhotoEnv(t)
+	c := e.signUp(t, "ana@example.com", "ana", false)
+	version := regexp.MustCompile(`href="/style\.css\?v=(\d+)"`)
+
+	e.publish(t, c, "none", with("c_bg", "#ff00cc"))
+	first := version.FindStringSubmatch(string(getReply(t, e, anaHost, "/").Body))
+	t1 := e.clock.Now()
+
+	// One millisecond later, inside the same second.
+	e.clock.Set(t1.Add(time.Millisecond))
+	e.publish(t, c, "none", with("c_bg", "#00ff00"))
+	second := version.FindStringSubmatch(string(getReply(t, e, anaHost, "/").Body))
+
+	if first == nil || second == nil {
+		t.Fatalf("version links = %v, %v, want both pages to link a versioned stylesheet", first, second)
+	}
+	if first[1] == second[1] {
+		t.Errorf("two publishes 1 ms apart share v=%s: the second would never reach a visitor who cached the first", first[1])
+	}
+	if want := fmt.Sprint(t1.Add(time.Millisecond).UnixMicro()); second[1] != want {
+		t.Errorf("v = %s, want updated_at in Unix microseconds %s", second[1], want)
+	}
 }

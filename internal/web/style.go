@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"strings"
 
 	"github.com/mayloo89/retratar/internal/mood"
 	"github.com/mayloo89/retratar/internal/style"
@@ -69,10 +68,13 @@ func parseDraft(form url.Values, moodKey, reset string) (style.Style, bool) {
 			continue
 		}
 		raw, ok := form[fieldColorPrefix+slot.Key]
-		if !ok || len(raw) != 1 || !style.ValidHex(raw[0]) {
+		if !ok || len(raw) != 1 {
 			return style.Style{}, false
 		}
-		hex := strings.ToLower(raw[0])
+		hex, ok := style.ParseHex(raw[0])
+		if !ok {
+			return style.Style{}, false
+		}
 		if hex == style.Default(slot.Key, moodKey) {
 			continue
 		}
@@ -289,13 +291,17 @@ func styleFromQuery(q url.Values) (style.Style, bool) {
 		if !present {
 			continue
 		}
-		if len(vals) != 1 || !style.ValidHex(vals[0]) {
+		if len(vals) != 1 {
+			return style.Style{}, false
+		}
+		hex, ok := style.ParseHex(vals[0])
+		if !ok {
 			return style.Style{}, false
 		}
 		if st.Colors == nil {
 			st.Colors = map[string]string{}
 		}
-		st.Colors[slot.Key] = strings.ToLower(vals[0])
+		st.Colors[slot.Key] = hex
 	}
 	for _, f := range []struct {
 		field string
