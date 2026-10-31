@@ -1,0 +1,50 @@
+/* The bar above the owner's preview, on the app host. It styles the bar and
+ * nothing else: every selector starts with .pv-, so it cannot touch the page
+ * under it, and it takes no colour from the page, so a page the owner made
+ * unreadable still has a readable bar. The preview itself is page.html with
+ * theme.css and the draft stylesheet; see docs/architecture.md. */
+
+/* theme.css pads <body> by 18px 10px 28px; the negative margins pull the bar
+ * out to the window's edges. */
+.pv-bar {
+	margin: -18px -10px 18px;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px 12px;
+	align-items: center;
+	justify-content: space-between;
+	padding: 10px 12px;
+	background: #111;
+	color: #fff;
+	font: 14px/1.4 Verdana, Geneva, "DejaVu Sans", sans-serif;
+}
+
+.pv-bar p {
+	margin: 0;
+	font-weight: bold;
+}
+
+.pv-bar button {
+	min-height: 44px;
+	padding: 6px 14px;
+	font: bold 14px/1.2 "Trebuchet MS", "Lucida Grande", sans-serif;
+	border-radius: 0;
+	cursor: pointer;
+}
+
+.pv-bar .pv-publish {
+	background: #fff;
+	color: #111;
+	border: 1px solid #fff;
+}
+
+.pv-bar .pv-edit {
+	background: transparent;
+	color: #fff;
+	border: 1px solid #888;
+}
+
+.pv-bar button:focus-visible {
+	outline: 2px dashed #fff;
+	outline-offset: 2px;
+}

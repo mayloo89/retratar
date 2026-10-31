@@ -57,6 +57,24 @@
 {{with .NameError}}<p role="alert">{{.}}</p>{{end}}
 </div></section>
 
+<section class="box"><h2 class="bar">Tu estilo</h2><div class="inner">
+<form method="post" action="/style">
+<p class="help">Los colores y tipografías por defecto cambian según cómo estás.</p>
+{{if .Style.Unsaved}}<p class="help">Tenés cambios sin publicar.</p>
+{{end}}<ul class="slots">
+{{range .Style.Colors}}<li class="slot"><label for="c_{{.Key}}">{{.Label}}</label>
+<span class="slot-ctl"><input type="color" id="c_{{.Key}}" name="c_{{.Key}}" value="{{.Hex}}" aria-describedby="st_{{.Key}}"><span class="hex">{{.Hex}}</span><span class="st {{if .Custom}}own{{else}}muted{{end}}" id="st_{{.Key}}">{{if .Custom}}Personalizado{{else}}Por defecto{{end}}</span></span>
+{{if .Custom}}<button class="quiet" name="reset" value="{{.Key}}" aria-label="Restablecer {{.Label}}">Restablecer</button>{{end}}</li>
+{{end}}{{range .Style.Fonts}}<li class="slot"><label for="{{.Field}}">{{.Label}}</label>
+<span class="slot-ctl"><select id="{{.Field}}" name="{{.Field}}" aria-describedby="st_{{.Field}}">{{range .Options}}<option value="{{.Key}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select><span class="st {{if .Custom}}own{{else}}muted{{end}}" id="st_{{.Field}}">{{if .Custom}}Personalizado{{else}}Por defecto{{end}}</span></span>
+{{if .Custom}}<button class="quiet" name="reset" value="{{.Reset}}" aria-label="Restablecer {{.Label}}">Restablecer</button>{{end}}</li>
+{{end}}</ul>
+<div class="check"><label><input type="checkbox" name="own_mood_box" value="no"{{if .Style.KeepsMoodBox}} checked{{end}}> El recuadro «cómo estoy» usa los colores de tu estado</label></div>
+<div class="actions"><button name="action" value="preview">Ver cómo queda</button><button class="quiet" name="action" value="publish">Publicar</button></div>
+</form>
+{{with .Style.Error}}<p role="alert">{{.}}</p>{{end}}
+</div></section>
+
 <section class="box"><h2 class="bar">Tu libro de visitas</h2>
 {{if .Guestbook}}<ul class="entries">
 {{range .Guestbook}}<li{{if .Hidden}} class="hidden"{{end}}>
