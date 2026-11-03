@@ -7,6 +7,7 @@ import (
 
 	"github.com/mayloo89/retratar/internal/guestbook"
 	"github.com/mayloo89/retratar/internal/mood"
+	"github.com/mayloo89/retratar/internal/style"
 	"github.com/mayloo89/retratar/internal/user"
 )
 
@@ -45,6 +46,68 @@ type appHomeData struct {
 
 	// Guestbook is the owner's entries of any state, newest first.
 	Guestbook []ownEntryView
+
+	// Style is the "Tu estilo" box.
+	Style styleBox
+}
+
+// styleBox is what the "Tu estilo" box renders: the draft the form shows,
+// which is the stored style unless a reset or "Seguir cambiando" brought one.
+type styleBox struct {
+	Colors []styleColorRow
+	Fonts  []styleFontRow
+	// KeepsMoodBox is the checkbox: checked when "cómo estoy" keeps the mood
+	// colours, which is when the draft's OwnMoodBox is false.
+	KeepsMoodBox bool
+	// Unsaved is set when the draft differs from what is stored.
+	Unsaved bool
+	Error   string
+}
+
+// styleColorRow is one colour slot. Hex is the draft's value, or the slot's
+// default under the current mood when the slot is not customised.
+type styleColorRow struct {
+	Key, Label, Hex string
+	Custom          bool
+}
+
+// styleFontRow is one typeface select. Field is the select's name and Reset
+// what its Restablecer button sends.
+type styleFontRow struct {
+	Field, Reset, Label string
+	Custom              bool
+	Options             []fontOption
+}
+
+type fontOption struct {
+	Key, Label string
+	Selected   bool
+}
+
+// styleBoxFor builds the box for the draft, against the mood whose defaults
+// the uncustomised slots show.
+func styleBoxFor(draft, stored style.Style, moodKey, errMsg string) styleBox {
+	box := styleBox{KeepsMoodBox: !draft.OwnMoodBox, Unsaved: !draft.Equal(stored), Error: errMsg}
+	for _, slot := range style.Slots() {
+		row := styleColorRow{Key: slot.Key, Label: slot.Label, Hex: style.Default(slot.Key, moodKey)}
+		if c, ok := draft.Colors[slot.Key]; ok {
+			row.Hex, row.Custom = c, true
+		}
+		box.Colors = append(box.Colors, row)
+	}
+	fontRow := func(field, reset, label, chosen, defaultKey string) styleFontRow {
+		row := styleFontRow{Field: field, Reset: reset, Label: label, Custom: chosen != ""}
+		selected := fontOrDefault(chosen, defaultKey)
+		for _, f := range style.Fonts() {
+			row.Options = append(row.Options, fontOption{Key: f.Key, Label: f.Label, Selected: f.Key == selected})
+		}
+		return row
+	}
+	box.Fonts = []styleFontRow{
+		fontRow(fieldHeadFont, resetHead, "Tipografía de los títulos", draft.HeadFont, style.DefaultHeadFont),
+		fontRow(fieldBodyFont, resetBody, "Tipografía del texto", draft.BodyFont, style.DefaultBodyFont),
+	}
+	return box
 }
 
 // ownEntryView is one guestbook entry as the owner's dashboard renders it.
@@ -94,7 +157,10 @@ func (s *Server) renderAppHomeErrors(w http.ResponseWriter, r *http.Request, sta
 // homeMessages are the per-form error messages the dashboard can show; each
 // appears next to its own form.
 type homeMessages struct {
-	Mood, Name, Photo string
+	Mood, Name, Photo, Style string
+	// Draft is a style the owner has not published, to show in the "Tu estilo"
+	// box in place of the stored one. Nil means the stored style.
+	Draft *style.Style
 }
 
 // renderAppHomeMessages is the dashboard renderer the others delegate to.
@@ -155,6 +221,28 @@ func (s *Server) renderAppHomeMessages(w http.ResponseWriter, r *http.Request, s
 				Hidden:       e.Hidden,
 			})
 		}
+	}
+
+	// The box shows the draft if there is one, and the stored style otherwise.
+	// Its uncustomised slots show what they default to under the current mood.
+	// A style that fails to load takes the dashboard down: showing defaults
+	// would invite a publish that overwrites what is stored.
+	if u.Handle != "" {
+		stored, err := s.Users.GetStyle(r.Context(), u.ID)
+		if err != nil {
+			s.Logger.ErrorContext(r.Context(), "get page style", slog.String("error", err.Error()))
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		draft := stored
+		if msgs.Draft != nil {
+			draft = *msgs.Draft
+		}
+		moodKey := "none"
+		if data.HasMood {
+			moodKey = data.MoodClass
+		}
+		data.Style = styleBoxFor(draft, stored, moodKey, msgs.Style)
 	}
 
 	s.renderTemplate(w, status, "app_home.html", data)

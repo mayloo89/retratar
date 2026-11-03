@@ -128,7 +128,8 @@ func TestDashboard_MoodClass(t *testing.T) {
 	if !strings.Contains(after, `value="inspirado" checked`) {
 		t.Errorf("dashboard = %q, want the inspirado radio checked", after)
 	}
-	if n := strings.Count(after, " checked"); n != 1 {
+	// Radios only: the "Tu estilo" checkbox is checked by default too.
+	if n := strings.Count(after, " checked required"); n != 1 {
 		t.Errorf("dashboard has %d checked radios, want exactly 1", n)
 	}
 	if n := strings.Count(after, `type="radio"`); n != len(mood.AllKeys()) {

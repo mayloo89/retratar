@@ -47,6 +47,21 @@ type MoodHistory struct {
 	At      pgtype.Timestamptz
 }
 
+type PageStyle struct {
+	UserID     uuid.UUID
+	Bg         *string
+	Sheet      *string
+	TextColor  *string
+	Link       *string
+	Name       *string
+	BarBg      *string
+	BarFg      *string
+	FontHead   *string
+	FontBody   *string
+	OwnMoodBox bool
+	UpdatedAt  pgtype.Timestamptz
+}
+
 type Session struct {
 	ID          uuid.UUID
 	SessionHash []byte

@@ -127,7 +127,7 @@ func (s *Server) hostSplit(app, pages http.Handler) http.Handler {
 // appRoutes serves the owner-facing surface.
 //
 // writes rate-limits the endpoints a script can abuse cheaply. POST /login is
-// the one that matters — it sends mail — but POST /handle, POST /mood, POST /name,
+// the one that matters — it sends mail — but POST /handle, POST /mood, POST /name, POST /style,
 // POST /photo, POST /photo/remove and POST /account/delete are unbounded writes too, so they share the limiter. POST /logout is left off:
 // it sends nothing, its work is a single idempotent revoke, and a forged
 // logout is a nuisance rather than a cost. GET routes are read-only and the
@@ -137,6 +137,11 @@ func (s *Server) appRoutes(writes, logins48 *rateLimiter) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 	mux.HandleFunc("GET /app.css", s.handleAppCSS)
+	// The preview renders the real page template on this host, so it needs the
+	// same theme.css, its own draft stylesheet and the preview bar's.
+	mux.HandleFunc("GET /theme.css", s.handleTheme)
+	mux.HandleFunc("GET /preview.css", s.handlePreviewCSS)
+	mux.HandleFunc("GET /style/preview.css", s.handleStylePreviewCSS)
 	mux.HandleFunc("GET /fonts/{file}", s.handleFont)
 	mux.HandleFunc("GET /{$}", s.handleAppHome)
 	mux.HandleFunc("GET /login", s.handleLoginForm)
@@ -148,6 +153,7 @@ func (s *Server) appRoutes(writes, logins48 *rateLimiter) http.Handler {
 	mux.Handle("POST /handle", writes.rateLimit(http.HandlerFunc(s.handleClaimSubmit)))
 	mux.Handle("POST /mood", writes.rateLimit(http.HandlerFunc(s.handleMoodSubmit)))
 	mux.Handle("POST /name", writes.rateLimit(http.HandlerFunc(s.handleNameSubmit)))
+	mux.Handle("POST /style", writes.rateLimit(http.HandlerFunc(s.handleStyleSubmit)))
 	mux.Handle("POST /photo", writes.rateLimit(http.HandlerFunc(s.handlePhotoUpload)))
 	mux.Handle("POST /photo/remove", writes.rateLimit(http.HandlerFunc(s.handlePhotoRemove)))
 	mux.HandleFunc("GET /photo/{file}", s.handleAppPhoto)
@@ -175,6 +181,7 @@ func (s *Server) pageRoutes(reads *rateLimiter) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.handlePage)
 	mux.HandleFunc("GET /theme.css", s.handleTheme)
+	mux.HandleFunc("GET /style.css", s.handleStyleCSS)
 	mux.HandleFunc("GET /fonts/{file}", s.handleFont)
 	mux.Handle("GET /og.png", reads.rateLimit(http.HandlerFunc(s.handleOGImage)))
 	mux.Handle("GET /photo/{file}", reads.rateLimit(http.HandlerFunc(s.handlePagePhoto)))

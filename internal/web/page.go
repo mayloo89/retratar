@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"github.com/mayloo89/retratar/internal/guestbook"
 	"github.com/mayloo89/retratar/internal/mood"
 	"github.com/mayloo89/retratar/internal/ogcard"
+	"github.com/mayloo89/retratar/internal/style"
 	"github.com/mayloo89/retratar/internal/user"
 )
 
@@ -75,7 +77,27 @@ type pageData struct {
 	PhotoURL    string
 	PhotoWidth  int
 	PhotoHeight int
+
+	// OwnMoodBox adds the own-mood-box class to <body>: the "cómo estoy" box
+	// takes the owner's colours. The class is a constant in the template.
+	OwnMoodBox bool
+	// StyleVersion is the owner's style stylesheet version: updated_at, as read
+	// back from the database, in Unix microseconds. Postgres keeps microseconds,
+	// so two publishes never share a version. Zero means the page has no
+	// stylesheet of its own. Only a number ever reaches the link's query.
+	StyleVersion int64
+
+	// Preview is set only by the owner's preview on the app host. The page then
+	// links PreviewCSSURL (the draft, as a same-origin URL built from validated
+	// values) and /preview.css instead of /style.css, is marked noindex, and
+	// starts with a bar whose form carries PreviewFields, the whole draft.
+	Preview       bool
+	PreviewCSSURL string
+	PreviewFields []hiddenField
 }
+
+// hiddenField is one hidden input of the preview bar.
+type hiddenField struct{ Name, Value string }
 
 // guestbookEntryView is one guestbook entry as page.html renders it. Body is
 // plain text; html/template escapes it and CSS shows its line breaks.
@@ -114,6 +136,29 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A style that fails to load must not take the page down with it: log it
+	// and render the page as if it had none. This is one small query on top of
+	// the user's; folding it into GetByHandle would make every user lookup
+	// pay for it.
+	st, err := s.Users.GetStyle(r.Context(), u.ID)
+	if err != nil {
+		s.Logger.ErrorContext(r.Context(), "get page style", slog.String("error", err.Error()))
+		st = style.Style{}
+	}
+
+	data, err := s.pageFor(r.Context(), u, st)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	s.renderTemplate(w, http.StatusOK, "page.html", data)
+}
+
+// pageFor builds what page.html renders for u with the style st: the public
+// page passes the stored style, the owner's preview passes a draft. It logs
+// what it cannot load and returns an error only for a failure the caller
+// should answer with a 500.
+func (s *Server) pageFor(ctx context.Context, u user.User, st style.Style) (pageData, error) {
 	base := s.Config.PageBaseURL(u.Handle)
 	data := pageData{
 		Handle:        u.Handle,
@@ -129,6 +174,11 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 		AppURL:        s.Config.BaseURL() + "/",
 		PrivacyURL:    s.Config.BaseURL() + "/privacy",
 		TermsURL:      s.Config.BaseURL() + "/terms",
+		OwnMoodBox:    st.OwnMoodBox,
+	}
+	// A style with no colour and no font has no stylesheet to link.
+	if st.CSS() != "" {
+		data.StyleVersion = st.UpdatedAt.UnixMicro()
 	}
 
 	if u.PhotoKey != "" {
@@ -136,7 +186,7 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 		data.PhotoWidth, data.PhotoHeight = u.PhotoWidth, u.PhotoHeight
 	}
 
-	m, err := s.Moods.CurrentMood(r.Context(), u.ID)
+	m, err := s.Moods.CurrentMood(ctx, u.ID)
 	switch {
 	case err == nil:
 		data.HasMood = true
@@ -150,16 +200,15 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, mood.ErrNoMood):
 		// No mood set yet — data already carries the empty state.
 	default:
-		s.Logger.ErrorContext(r.Context(), "get current mood", slog.String("error", err.Error()))
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
+		s.Logger.ErrorContext(ctx, "get current mood", slog.String("error", err.Error()))
+		return pageData{}, err
 	}
 
 	// A guestbook that fails to load must not take the mood down with it: log
 	// it and render the page without entries.
-	entries, err := s.Guestbook.Visible(r.Context(), u.ID, guestbook.PageLimit)
+	entries, err := s.Guestbook.Visible(ctx, u.ID, guestbook.PageLimit)
 	if err != nil {
-		s.Logger.ErrorContext(r.Context(), "list guestbook entries", slog.String("error", err.Error()))
+		s.Logger.ErrorContext(ctx, "list guestbook entries", slog.String("error", err.Error()))
 	}
 	for _, e := range entries {
 		data.Guestbook = append(data.Guestbook, guestbookEntryView{
@@ -169,8 +218,52 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 			Body:         e.Body,
 		})
 	}
+	return data, nil
+}
 
-	s.renderTemplate(w, http.StatusOK, "page.html", data)
+// handleStyleCSS serves the page's own stylesheet: the owner's colours and
+// fonts, built from the stored, validated style. A handle that does not exist,
+// or a page with nothing to say, is a 404.
+//
+// page.html links it with ?v=<updated_at>, and a new version is a new URL, so
+// a request that carries v is cacheable for good. The handler ignores v's
+// value. Without v there is no way to bust the cache, so that response is not
+// cached.
+func (s *Server) handleStyleCSS(w http.ResponseWriter, r *http.Request) {
+	handle, ok := HandleFrom(r.Context())
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	u, err := s.Users.GetByHandle(r.Context(), handle)
+	if err != nil {
+		if errors.Is(err, user.ErrUserNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		s.Logger.ErrorContext(r.Context(), "get user by handle", slog.String("error", err.Error()))
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	st, err := s.Users.GetStyle(r.Context(), u.ID)
+	if err != nil {
+		s.Logger.ErrorContext(r.Context(), "get page style", slog.String("error", err.Error()))
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	css := st.CSS()
+	if css == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/css; charset=utf-8")
+	if r.URL.Query().Has("v") {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		w.Header().Set("Cache-Control", "no-cache")
+	}
+	_, _ = w.Write([]byte(css))
 }
 
 // handleTheme serves the one stylesheet every public page loads.

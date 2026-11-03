@@ -20,6 +20,12 @@ var themeCSS []byte
 //go:embed static/app.css
 var appCSS []byte
 
+// previewCSS styles the owner's preview bar and nothing else. It is served on
+// the app host only. See internal/web/static/preview.css.
+//
+//go:embed static/preview.css
+var previewCSS []byte
+
 // fontsFS holds the self-hosted fonts theme.css declares. Each file name
 // carries a hash of its content, so GET /fonts/{file} can be cached forever.
 // internal/style lists the files, and a test keeps the list, the directory and
