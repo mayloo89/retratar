@@ -74,7 +74,7 @@ func (s *Server) handlePhotoUpload(w http.ResponseWriter, r *http.Request) {
 	// The form is only shown to allowlisted accounts, so this is a
 	// hand-made request.
 	if !u.CanUploadPhotos {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		s.renderError(w, r, http.StatusForbidden)
 		return
 	}
 
@@ -87,7 +87,7 @@ func (s *Server) handlePhotoUpload(w http.ResponseWriter, r *http.Request) {
 
 	// This route is exempt from BodyLimit (see there), so it sets its own cap.
 	if r.ContentLength > maxPhotoBody {
-		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+		s.renderError(w, r, http.StatusRequestEntityTooLarge)
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxPhotoBody)
@@ -97,11 +97,11 @@ func (s *Server) handlePhotoUpload(w http.ResponseWriter, r *http.Request) {
 		var tooBig *http.MaxBytesError
 		switch {
 		case errors.As(err, &tooBig):
-			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			s.renderError(w, r, http.StatusRequestEntityTooLarge)
 		case errors.Is(err, errNoPhotoPart):
 			s.renderAppHomeMessages(w, r, http.StatusUnprocessableEntity, u, homeMessages{Photo: msgPhotoNone})
 		default:
-			http.Error(w, "bad request", http.StatusBadRequest)
+			s.renderError(w, r, http.StatusBadRequest)
 		}
 		return
 	}
@@ -109,7 +109,7 @@ func (s *Server) handlePhotoUpload(w http.ResponseWriter, r *http.Request) {
 	res, status, msg := s.processPhoto(r, data)
 	if status != 0 {
 		if msg == "" {
-			http.Error(w, "internal server error", status)
+			s.renderError(w, r, status)
 			return
 		}
 		s.renderAppHomeMessages(w, r, status, u, homeMessages{Photo: msg})
@@ -119,7 +119,7 @@ func (s *Server) handlePhotoUpload(w http.ResponseWriter, r *http.Request) {
 	key := photostore.NewKey()
 	if err = s.Photos.Save(key, res.JPEG); err != nil {
 		s.Logger.ErrorContext(r.Context(), "save photo", slog.String("error", err.Error()))
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		s.renderError(w, r, http.StatusInternalServerError)
 		return
 	}
 
@@ -132,14 +132,14 @@ func (s *Server) handlePhotoUpload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.Logger.ErrorContext(r.Context(), "set photo", slog.String("error", err.Error()))
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		s.renderError(w, r, http.StatusInternalServerError)
 		return
 	}
 
 	if oldKey != "" {
 		s.removePhotoFile(r, oldKey)
 	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, "/?ok=photo#foto", http.StatusSeeOther)
 }
 
 // processPhoto runs photo.Process one upload at a time: decoding a photo can
@@ -260,13 +260,13 @@ func (s *Server) handlePhotoRemove(w http.ResponseWriter, r *http.Request) {
 	oldKey, err := s.Users.RemovePhoto(r.Context(), u.ID)
 	if err != nil {
 		s.Logger.ErrorContext(r.Context(), "remove photo", slog.String("error", err.Error()))
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		s.renderError(w, r, http.StatusInternalServerError)
 		return
 	}
 	if oldKey != "" {
 		s.removePhotoFile(r, oldKey)
 	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, "/?ok=photo-removed#foto", http.StatusSeeOther)
 }
 
 // removePhotoFile deletes a stored photo and logs, but does not fail the

@@ -3,7 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Elegí tu dirección</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<title>Elegí tu dirección · retratar</title>
 <link rel="stylesheet" href="/app.css">
 </head>
 <body>
@@ -12,7 +14,7 @@
 <main class="sheet">
 <h1>Elegí tu dirección</h1>
 <div class="body">
-<p>Va a ser la dirección de tu página: https://&lt;nombre&gt;.retrat.ar. Usá minúsculas, números y guiones.</p>
+<p>Va a ser la dirección de tu página: https://<nombre>.retrat.ar. Usá minúsculas, números y guiones.</p>
 <form method="post" action="/handle">
 <div class="field"><label for="handle">Tu dirección</label>
 <input type="text" id="handle" name="handle" value="{{.Handle}}" required></div>

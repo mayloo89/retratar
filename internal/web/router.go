@@ -77,8 +77,8 @@ func (s *Server) Handler() http.Handler {
 	// The login nonce in nonce.go stays as a separate defence for the
 	// link-confirmation step. The pages surface is GET-only and is not wrapped.
 	cop := http.NewCrossOriginProtection()
-	cop.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+	cop.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeErrorPage(w, r, http.StatusForbidden, "")
 	}))
 
 	app := Chain(s.appRoutes(writes, logins48), AppCSP, PrivateCache, cop.Handler, BodyLimit, CurrentUser(s.Sessions, s.Users))
@@ -116,6 +116,8 @@ func (s *Server) hostSplit(app, pages http.Handler) http.Handler {
 		default:
 			handle, ok := handleFromHost(host, pagesHost)
 			if !ok {
+				// Plain text: this host is not one we configured, so nothing
+				// branded is served on it.
 				http.NotFound(w, r)
 				return
 			}
@@ -143,6 +145,10 @@ func (s *Server) appRoutes(writes, logins48 *rateLimiter) http.Handler {
 	mux.HandleFunc("GET /preview.css", s.handlePreviewCSS)
 	mux.HandleFunc("GET /style/preview.css", s.handleStylePreviewCSS)
 	mux.HandleFunc("GET /fonts/{file}", s.handleFont)
+	// Icon handlers (registered before catch-all).
+	mux.HandleFunc("GET /favicon.svg", s.handleFaviconSVG)
+	mux.HandleFunc("GET /apple-touch-icon.png", s.handleAppleTouchIconPNG)
+	mux.HandleFunc("GET /favicon.ico", s.handleFaviconICO)
 	mux.HandleFunc("GET /{$}", s.handleAppHome)
 	mux.HandleFunc("GET /login", s.handleLoginForm)
 	mux.Handle("POST /login", writes.rateLimit(logins48.rateLimit(http.HandlerFunc(s.handleLoginRequest))))
@@ -168,6 +174,8 @@ func (s *Server) appRoutes(writes, logins48 *rateLimiter) http.Handler {
 	mux.Handle("POST /guestbook/entries/{id}/show", writes.rateLimit(http.HandlerFunc(s.handleGuestbookShow)))
 	// GET /random is not rate-limited: it is a cheap read and sends no mail.
 	mux.HandleFunc("GET /random", s.handleRandom)
+	// Catch-all for unknown paths on the app surface.
+	mux.HandleFunc("/", s.handleNotFound)
 	return mux
 }
 
@@ -180,11 +188,18 @@ func (s *Server) appRoutes(writes, logins48 *rateLimiter) http.Handler {
 func (s *Server) pageRoutes(reads *rateLimiter) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.handlePage)
+	mux.HandleFunc("GET /app.css", s.handleAppCSS)
 	mux.HandleFunc("GET /theme.css", s.handleTheme)
 	mux.HandleFunc("GET /style.css", s.handleStyleCSS)
 	mux.HandleFunc("GET /fonts/{file}", s.handleFont)
+	// Icon handlers (registered before catch-all).
+	mux.HandleFunc("GET /favicon.svg", s.handleFaviconSVG)
+	mux.HandleFunc("GET /apple-touch-icon.png", s.handleAppleTouchIconPNG)
+	mux.HandleFunc("GET /favicon.ico", s.handleFaviconICO)
 	mux.Handle("GET /og.png", reads.rateLimit(http.HandlerFunc(s.handleOGImage)))
 	mux.Handle("GET /photo/{file}", reads.rateLimit(http.HandlerFunc(s.handlePagePhoto)))
+	// Catch-all for unknown paths on the pages surface.
+	mux.HandleFunc("/", s.handleNotFound)
 	return mux
 }
 

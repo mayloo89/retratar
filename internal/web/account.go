@@ -44,7 +44,7 @@ func (s *Server) handleAccountDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		s.renderError(w, r, http.StatusBadRequest)
 		return
 	}
 	if r.FormValue("confirm") != "yes" {
@@ -62,7 +62,7 @@ func (s *Server) handleAccountDelete(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.Logger.ErrorContext(r.Context(), "delete account", slog.String("error", err.Error()))
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		s.renderError(w, r, http.StatusInternalServerError)
 		return
 	}
 

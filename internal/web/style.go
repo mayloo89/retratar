@@ -150,7 +150,7 @@ func (s *Server) handleStyleSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		s.renderError(w, r, http.StatusBadRequest)
 		return
 	}
 
@@ -159,18 +159,18 @@ func (s *Server) handleStyleSubmit(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case reset != "":
 		if !validReset(reset) {
-			http.Error(w, "bad request", http.StatusBadRequest)
+			s.renderError(w, r, http.StatusBadRequest)
 			return
 		}
 	case action != "preview" && action != "edit" && action != "publish":
-		http.Error(w, "bad request", http.StatusBadRequest)
+		s.renderError(w, r, http.StatusBadRequest)
 		return
 	}
 
 	moodKey, err := s.currentMoodKey(r, u)
 	if err != nil {
 		s.Logger.ErrorContext(r.Context(), "get current mood", slog.String("error", err.Error()))
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		s.renderError(w, r, http.StatusInternalServerError)
 		return
 	}
 
@@ -192,10 +192,10 @@ func (s *Server) handleStyleSubmit(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			s.Logger.ErrorContext(r.Context(), "set page style", slog.String("error", err.Error()))
-			http.Error(w, "internal server error", http.StatusInternalServerError)
+			s.renderError(w, r, http.StatusInternalServerError)
 			return
 		}
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+		http.Redirect(w, r, "/?ok=style#estilo", http.StatusSeeOther)
 	}
 }
 
@@ -205,7 +205,7 @@ func (s *Server) handleStyleSubmit(w http.ResponseWriter, r *http.Request) {
 func (s *Server) renderStylePreview(w http.ResponseWriter, r *http.Request, u user.User, draft style.Style, moodKey string) {
 	data, err := s.pageFor(r.Context(), u, draft)
 	if err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		s.renderError(w, r, http.StatusInternalServerError)
 		return
 	}
 	data.StyleVersion = 0

@@ -42,11 +42,11 @@ func (s *Server) guestbookOwner(w http.ResponseWriter, r *http.Request) (user.Us
 	owner, err := s.Users.GetByHandle(r.Context(), r.PathValue("handle"))
 	if err != nil {
 		if errors.Is(err, user.ErrUserNotFound) {
-			http.NotFound(w, r)
+			s.renderError(w, r, http.StatusNotFound)
 			return user.User{}, false
 		}
 		s.Logger.ErrorContext(r.Context(), "get user by handle", slog.String("error", err.Error()))
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		s.renderError(w, r, http.StatusInternalServerError)
 		return user.User{}, false
 	}
 	return owner, true
@@ -120,7 +120,7 @@ func (s *Server) handleGuestbookSign(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		s.renderError(w, r, http.StatusBadRequest)
 		return
 	}
 	body := r.FormValue("body")
@@ -135,7 +135,7 @@ func (s *Server) handleGuestbookSign(w http.ResponseWriter, r *http.Request) {
 			s.renderTemplate(w, http.StatusForbidden, "guestbook_sign.html", data)
 		default:
 			s.Logger.ErrorContext(r.Context(), "sign guestbook", slog.String("error", err.Error()))
-			http.Error(w, "internal server error", http.StatusInternalServerError)
+			s.renderError(w, r, http.StatusInternalServerError)
 		}
 		return
 	}
@@ -146,20 +146,20 @@ func (s *Server) handleGuestbookSign(w http.ResponseWriter, r *http.Request) {
 // handleGuestbookHide takes one of the signed-in owner's entries off their
 // public page.
 func (s *Server) handleGuestbookHide(w http.ResponseWriter, r *http.Request) {
-	s.setGuestbookEntryHidden(w, r, s.Guestbook.Hide)
+	s.setGuestbookEntryHidden(w, r, s.Guestbook.Hide, "entry-hidden")
 }
 
 // handleGuestbookShow puts one of the signed-in owner's hidden entries back
 // on their public page.
 func (s *Server) handleGuestbookShow(w http.ResponseWriter, r *http.Request) {
-	s.setGuestbookEntryHidden(w, r, s.Guestbook.Show)
+	s.setGuestbookEntryHidden(w, r, s.Guestbook.Show, "entry-shown")
 }
 
 // setGuestbookEntryHidden is the shared shape of hide and show: the guards
 // POST /mood uses, then apply on the entry named by {id}. An entry that is
 // not on the owner's page is a 404 whoever it belongs to, so the response
 // never confirms that an ID exists.
-func (s *Server) setGuestbookEntryHidden(w http.ResponseWriter, r *http.Request, apply func(ctx context.Context, pageUserID, entryID uuid.UUID) error) {
+func (s *Server) setGuestbookEntryHidden(w http.ResponseWriter, r *http.Request, apply func(ctx context.Context, pageUserID, entryID uuid.UUID) error, okKey string) {
 	u, ok := UserFrom(r.Context())
 	if !ok {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
@@ -172,19 +172,19 @@ func (s *Server) setGuestbookEntryHidden(w http.ResponseWriter, r *http.Request,
 
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		http.NotFound(w, r)
+		s.renderError(w, r, http.StatusNotFound)
 		return
 	}
 
 	if err := apply(r.Context(), u.ID, id); err != nil {
 		if errors.Is(err, guestbook.ErrEntryNotFound) {
-			http.NotFound(w, r)
+			s.renderError(w, r, http.StatusNotFound)
 			return
 		}
 		s.Logger.ErrorContext(r.Context(), "set guestbook entry state", slog.String("error", err.Error()))
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		s.renderError(w, r, http.StatusInternalServerError)
 		return
 	}
 
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, "/?ok="+okKey+"#libro", http.StatusSeeOther)
 }

@@ -59,8 +59,8 @@ func (e *photoEnv) publish(t *testing.T, c *http.Cookie, moodKey string, set map
 	f.Set("action", "publish")
 	r := e.form(t, c, "/style", f)
 	wantStatus(t, r, http.StatusSeeOther)
-	if loc := r.Header.Get("Location"); loc != "/" {
-		t.Fatalf("publish Location = %q, want /", loc)
+	if loc := r.Header.Get("Location"); loc != "/?ok=style#estilo" {
+		t.Fatalf("publish Location = %q, want /?ok=style#estilo", loc)
 	}
 }
 
