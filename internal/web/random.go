@@ -30,6 +30,6 @@ func (s *Server) handleRandom(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusFound)
 	default:
 		s.Logger.ErrorContext(r.Context(), "random handle", slog.String("error", err.Error()))
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		s.renderError(w, r, http.StatusInternalServerError)
 	}
 }

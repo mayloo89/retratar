@@ -45,7 +45,7 @@ func (s *Server) handleLoginForm(w http.ResponseWriter, r *http.Request) {
 // only about the text typed into the box.
 func (s *Server) handleLoginRequest(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		s.renderError(w, r, http.StatusBadRequest)
 		return
 	}
 
@@ -71,7 +71,7 @@ func (s *Server) handleLoginRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		s.Logger.ErrorContext(r.Context(), "request login", slog.String("error", err.Error()))
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		s.renderError(w, r, http.StatusInternalServerError)
 		return
 	}
 
@@ -79,7 +79,7 @@ func (s *Server) handleLoginRequest(w http.ResponseWriter, r *http.Request) {
 	body := "Entrá a retratar con este link:\n" + link + "\n\nVence en 15 minutos. Si no lo pediste, ignorá este mail."
 	if err := s.Mailer.Send(r.Context(), address, "Tu link para entrar a retratar", body); err != nil {
 		s.Logger.ErrorContext(r.Context(), "send login mail", slog.String("error", err.Error()))
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		s.renderError(w, r, http.StatusInternalServerError)
 		return
 	}
 
@@ -127,14 +127,14 @@ func (s *Server) handleLoginComplete(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.Logger.ErrorContext(r.Context(), "complete login", slog.String("error", err.Error()))
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		s.renderError(w, r, http.StatusInternalServerError)
 		return
 	}
 
 	sessionToken, err := s.Sessions.Issue(r.Context(), u.ID)
 	if err != nil {
 		s.Logger.ErrorContext(r.Context(), "issue session", slog.String("error", err.Error()))
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		s.renderError(w, r, http.StatusInternalServerError)
 		return
 	}
 

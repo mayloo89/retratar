@@ -31,8 +31,8 @@ func TestClaimHandleFlow_ShowsFormThenClaims(t *testing.T) {
 	if claim.StatusCode != http.StatusSeeOther {
 		t.Fatalf("POST /handle status = %d, want 303", claim.StatusCode)
 	}
-	if got := claim.Header.Get("Location"); got != "/" {
-		t.Errorf("POST /handle Location = %q, want %q", got, "/")
+	if got := claim.Header.Get("Location"); got != "/?ok=handle" {
+		t.Errorf("POST /handle Location = %q, want %q", got, "/?ok=handle")
 	}
 
 	home := request(t, h, http.MethodGet, host, "/", nil, sessionCookie)

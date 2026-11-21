@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -70,9 +71,9 @@ func TestLoginRateLimited_BlocksAfterBurstPerIP(t *testing.T) {
 }
 
 // TestLoginRateLimited_Returns429WithoutLimitDetail checks the throttled
-// response body is exactly "rate limited\n" and carries no Retry-After. Both
-// together mean the response reveals neither the rate, the burst, nor the
-// caller's remaining budget.
+// response on the app host is the styled error page with "Demasiados intentos",
+// contains no digits besides those in the fixed template, and carries no
+// Retry-After.
 func TestLoginRateLimited_Returns429WithoutLimitDetail(t *testing.T) {
 	srv, _ := newLoginServer(t)
 	h := srv.Handler()
@@ -94,11 +95,53 @@ func TestLoginRateLimited_Returns429WithoutLimitDetail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read body: %v", err)
 	}
-	if got := string(body); got != "rate limited\n" {
-		t.Errorf("429 body = %q, want exactly %q (nothing about rate, burst or remaining budget)", got, "rate limited\n")
+	bodyStr := string(body)
+	if !strings.Contains(bodyStr, "Demasiados intentos") {
+		t.Errorf("429 body = %q, want it to contain %q", bodyStr, "Demasiados intentos")
+	}
+	// What the visitor reads is fixed copy, so a digit in it could only be
+	// the rate, the burst or a remaining budget leaking out. Markup is
+	// skipped: tags like <h1> and the head's charset carry digits of their own.
+	_, visible, _ := strings.Cut(bodyStr, "<body")
+	for _, r := range regexp.MustCompile(`<[^>]*>`).ReplaceAllString(visible, "") {
+		if r >= '0' && r <= '9' {
+			t.Errorf("429 body contains digit %c: %q", r, bodyStr)
+			break
+		}
 	}
 	if got := resp.Header.Get("Retry-After"); got != "" {
 		t.Errorf("Retry-After = %q, want none: it would reveal the refill rate", got)
+	}
+}
+
+// TestLoginRateLimited_PagesHostImageRoute checks that the pages-host image
+// routes still return plain text "rate limited\n" so scrapers see a stable body.
+func TestLoginRateLimited_PagesHostImageRoute(t *testing.T) {
+	srv, _ := newLoginServer(t)
+	h := srv.Handler()
+	const host = "ana.retrat.ar"
+
+	var resp *http.Response
+	for range 35 { // ogRateBurst is 30
+		if resp != nil {
+			resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
+		}
+		resp = requestFrom(t, h, "203.0.113.13:5000", http.MethodGet, host, "/og.png", nil)
+	}
+	defer resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
+
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	if got := string(body); got != "rate limited\n" {
+		t.Errorf("429 body on pages host = %q, want exactly %q", got, "rate limited\n")
+	}
+	if got := resp.Header.Get("Retry-After"); got != "" {
+		t.Errorf("Retry-After = %q, want none", got)
 	}
 }
 

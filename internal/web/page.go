@@ -121,18 +121,18 @@ var argentina = time.FixedZone("ART", -3*60*60)
 func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 	handle, ok := HandleFrom(r.Context())
 	if !ok {
-		http.NotFound(w, r)
+		s.renderError(w, r, http.StatusNotFound)
 		return
 	}
 
 	u, err := s.Users.GetByHandle(r.Context(), handle)
 	if err != nil {
 		if errors.Is(err, user.ErrUserNotFound) {
-			http.NotFound(w, r)
+			s.renderError(w, r, http.StatusNotFound)
 			return
 		}
 		s.Logger.ErrorContext(r.Context(), "get user by handle", slog.String("error", err.Error()))
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		s.renderError(w, r, http.StatusInternalServerError)
 		return
 	}
 
@@ -148,7 +148,7 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 
 	data, err := s.pageFor(r.Context(), u, st)
 	if err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		s.renderError(w, r, http.StatusInternalServerError)
 		return
 	}
 	s.renderTemplate(w, http.StatusOK, "page.html", data)
