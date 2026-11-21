@@ -447,12 +447,10 @@ func TestPhotoUpload_RaceLoserIsRejectedAndCleanedUp(t *testing.T) {
 	var wg sync.WaitGroup
 	codes := make([]int, 2)
 	for i := range codes {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			resp := e.upload(t, c, testJPEG(t, 40, 20))
 			codes[i] = resp.Code
-		}()
+		})
 	}
 	wg.Wait()
 

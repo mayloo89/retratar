@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"errors"
+	"maps"
 	"strings"
 	"testing"
 	"time"
@@ -644,9 +645,7 @@ func TestPhotosDir(t *testing.T) {
 	}
 	with := func(dir string) map[string]string {
 		m := map[string]string{"PHOTOS_DIR": dir}
-		for k, v := range prod {
-			m[k] = v
-		}
+		maps.Copy(m, prod)
 		return m
 	}
 
@@ -703,9 +702,7 @@ func TestLegalIdentity(t *testing.T) {
 	}
 	with := func(key, val string) map[string]string {
 		m := map[string]string{}
-		for k, v := range prod {
-			m[k] = v
-		}
+		maps.Copy(m, prod)
 		m[key] = val
 		return m
 	}

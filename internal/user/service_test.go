@@ -105,12 +105,10 @@ func TestConcurrentCompleteLoginSpendsTheTokenOnce(t *testing.T) {
 	var wg sync.WaitGroup
 	start := make(chan struct{})
 	for i := range attempts {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			<-start // Release them together, so they contend for the row.
 			_, errs[i] = svc.CompleteLogin(t.Context(), raw)
-		}()
+		})
 	}
 	close(start)
 	wg.Wait()
@@ -512,12 +510,10 @@ func TestConcurrentRequestLoginRespectsBudget(t *testing.T) {
 	var wg sync.WaitGroup
 	start := make(chan struct{})
 	for i := range attempts {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			<-start // Release them together, so they contend for the address.
 			_, errs[i] = svc.RequestLogin(t.Context(), "ana@example.com")
-		}()
+		})
 	}
 	close(start)
 	wg.Wait()

@@ -222,15 +222,13 @@ func serve(ctx context.Context, logger *slog.Logger, timeout time.Duration, serv
 		shutErrs []error
 	)
 	for _, s := range servers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			if err := s.Shutdown(shutdownCtx); err != nil {
 				mu.Lock()
 				shutErrs = append(shutErrs, fmt.Errorf("shutdown %s: %w", s.Addr, err))
 				mu.Unlock()
 			}
-		}()
+		})
 	}
 	wg.Wait()
 

@@ -255,8 +255,7 @@ func BenchmarkProcess_12MP(b *testing.B) {
 		b.Fatal(err)
 	}
 	b.ReportAllocs()
-	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		if _, err := Process(bytes.NewReader(data)); err != nil {
 			b.Fatal(err)
 		}

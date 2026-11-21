@@ -1,6 +1,7 @@
 package web_test
 
 import (
+	"maps"
 	"net/http"
 	"net/url"
 	"strings"
@@ -38,9 +39,7 @@ func (e *photoEnv) claimAs(t *testing.T, address, handle string, extra url.Value
 	t.Helper()
 	c := completeLogin(t, e.h, appHost, e.send, e.srv.Config.BaseURL(), address)
 	v := url.Values{"handle": {handle}}
-	for k, vals := range extra {
-		v[k] = vals
-	}
+	maps.Copy(v, extra)
 	return c, e.form(t, c, "/handle", v)
 }
 

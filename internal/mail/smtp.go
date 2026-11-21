@@ -165,8 +165,7 @@ func domainOf(addr string) string {
 // error even though [domainOf] already stripped it from the address we
 // interpolate ourselves.
 func smtpStatus(err error) string {
-	var proto *textproto.Error
-	if errors.As(err, &proto) {
+	if proto, ok := errors.AsType[*textproto.Error](err); ok {
 		return fmt.Sprintf("smtp status %d", proto.Code)
 	}
 	return "rejected"
