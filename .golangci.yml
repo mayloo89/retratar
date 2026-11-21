@@ -41,6 +41,11 @@ linters:
     - thelper         # test helpers must call t.Helper()
 
   settings:
+    misspell:
+      # Spanish copy in Go strings that the English dictionary misreads.
+      ignore-rules:
+        - mandaste
+
     errcheck:
       check-type-assertions: true
       check-blank: false

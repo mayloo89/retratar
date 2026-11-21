@@ -31,7 +31,7 @@ func CurrentUser(sessions *session.Service, users *user.Service) Middleware {
 			userID, err := sessions.Lookup(r.Context(), cookie.Value)
 			if err != nil {
 				if !errors.Is(err, session.ErrInvalidSession) {
-					http.Error(w, "internal server error", http.StatusInternalServerError)
+					writeErrorPage(w, r, http.StatusInternalServerError, "")
 					return
 				}
 				next.ServeHTTP(w, r)
@@ -41,7 +41,7 @@ func CurrentUser(sessions *session.Service, users *user.Service) Middleware {
 			u, err := users.GetByID(r.Context(), userID)
 			if err != nil {
 				if !errors.Is(err, user.ErrUserNotFound) {
-					http.Error(w, "internal server error", http.StatusInternalServerError)
+					writeErrorPage(w, r, http.StatusInternalServerError, "")
 					return
 				}
 				next.ServeHTTP(w, r)

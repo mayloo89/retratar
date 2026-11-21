@@ -66,8 +66,9 @@ func TestCrossOriginProtection_RejectsCrossSitePOST(t *testing.T) {
 				if resp.StatusCode != http.StatusForbidden {
 					t.Errorf("POST %s status = %d, want 403", path, resp.StatusCode)
 				}
-				if body, _ := io.ReadAll(resp.Body); string(body) != "forbidden\n" {
-					t.Errorf("POST %s body = %q, want %q", path, body, "forbidden\n")
+				body, _ := io.ReadAll(resp.Body)
+				if !strings.Contains(string(body), "No se puede hacer eso") {
+					t.Errorf("POST %s body = %q, want it to contain %q", path, body, "No se puede hacer eso")
 				}
 			}
 
@@ -112,6 +113,10 @@ func TestCrossOriginProtection_RejectsForeignOriginWithoutFetchMetadata(t *testi
 	resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "No se puede hacer eso") {
+		t.Errorf("body = %q, want it to contain %q", body, "No se puede hacer eso")
 	}
 	if _, err := srv.Moods.CurrentMood(t.Context(), id); !errors.Is(err, mood.ErrNoMood) {
 		t.Errorf("CurrentMood() error = %v, want ErrNoMood", err)

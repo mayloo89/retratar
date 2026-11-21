@@ -44,7 +44,7 @@ func (s *Server) handleClaimSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		s.renderError(w, r, http.StatusBadRequest)
 		return
 	}
 
@@ -72,10 +72,10 @@ func (s *Server) handleClaimSubmit(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 		default:
 			s.Logger.ErrorContext(r.Context(), "claim handle", slog.String("error", err.Error()))
-			http.Error(w, "internal server error", http.StatusInternalServerError)
+			s.renderError(w, r, http.StatusInternalServerError)
 		}
 		return
 	}
 
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, "/?ok=handle", http.StatusSeeOther)
 }

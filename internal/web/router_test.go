@@ -199,8 +199,8 @@ func TestPagesSurfaceHasNoPrivateCacheHeaders(t *testing.T) {
 	resp := get(t, h, "sebas.retrat.ar", "/")
 	defer resp.Body.Close() //nolint:errcheck // httptest body close cannot fail
 
-	if got := resp.Header.Get("Cache-Control"); got != "" {
-		t.Errorf("Cache-Control = %q, want empty", got)
+	if got := resp.Header.Get("Cache-Control"); strings.Contains(got, "private") {
+		t.Errorf("Cache-Control = %q, want nothing private", got)
 	}
 }
 

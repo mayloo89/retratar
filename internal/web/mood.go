@@ -25,7 +25,7 @@ func (s *Server) handleMoodSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		s.renderError(w, r, http.StatusBadRequest)
 		return
 	}
 
@@ -40,10 +40,10 @@ func (s *Server) handleMoodSubmit(w http.ResponseWriter, r *http.Request) {
 			s.renderAppHome(w, r, http.StatusUnprocessableEntity, u, "La nota puede tener hasta 60 caracteres, en una sola línea.")
 		default:
 			s.Logger.ErrorContext(r.Context(), "set mood", slog.String("error", err.Error()))
-			http.Error(w, "internal server error", http.StatusInternalServerError)
+			s.renderError(w, r, http.StatusInternalServerError)
 		}
 		return
 	}
 
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, "/?ok=mood#estado", http.StatusSeeOther)
 }

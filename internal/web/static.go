@@ -26,6 +26,18 @@ var appCSS []byte
 //go:embed static/preview.css
 var previewCSS []byte
 
+// faviconSVG is the site favicon, a Polaroid on a brown tile. Served at
+// /favicon.svg on both surfaces.
+//
+//go:embed static/favicon.svg
+var faviconSVG []byte
+
+// appleTouchIconPNG is the home-screen icon for iOS, 180x180 PNG. Served at
+// /apple-touch-icon.png and /favicon.ico on both surfaces.
+//
+//go:embed static/apple-touch-icon.png
+var appleTouchIconPNG []byte
+
 // fontsFS holds the self-hosted fonts theme.css declares. Each file name
 // carries a hash of its content, so GET /fonts/{file} can be cached forever.
 // internal/style lists the files, and a test keeps the list, the directory and

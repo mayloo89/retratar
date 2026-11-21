@@ -175,11 +175,18 @@ func newNetworkLimiter() *rateLimiter {
 
 // rateLimit rejects a request with 429 when its client key is over budget. The
 // response body says nothing about the limit: its rate, burst and the caller's
-// remaining tokens all stay server-side.
+// remaining tokens all stay server-side, and there is no Retry-After. On the
+// app surface the body is the styled error page, whose copy is fixed; on the
+// pages surface, where only /og.png and /photo/{file} are limited, it stays
+// plain text, since an image response is never read as a page.
 func (l *rateLimiter) rateLimit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !l.allow(l.key(r)) {
-			http.Error(w, "rate limited", http.StatusTooManyRequests)
+			if _, onPages := HandleFrom(r.Context()); onPages {
+				http.Error(w, "rate limited", http.StatusTooManyRequests)
+				return
+			}
+			writeErrorPage(w, r, http.StatusTooManyRequests, "")
 			return
 		}
 		next.ServeHTTP(w, r)

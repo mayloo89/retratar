@@ -17,6 +17,26 @@ type moodOption struct {
 	Selected bool
 }
 
+// notice is the one-line "it worked" message a successful dashboard form
+// redirects to. Box names the section it shows in.
+type notice struct {
+	Box  string
+	Text string
+}
+
+// notices maps the ?ok= values the app itself redirects to. Anything else in
+// ?ok= is ignored: the text shown never comes from the request.
+var notices = map[string]notice{
+	"mood":          {Box: "estado", Text: "Listo. Tu página ya muestra cómo estás."},
+	"name":          {Box: "nombre", Text: "Listo. Guardamos tu nombre."},
+	"photo":         {Box: "foto", Text: "Listo. Tu foto nueva ya está en tu página."},
+	"photo-removed": {Box: "foto", Text: "Listo. Sacamos la foto de tu página."},
+	"style":         {Box: "estilo", Text: "Listo. Tu estilo ya está publicado."},
+	"entry-hidden":  {Box: "libro", Text: "Listo. Esa firma ya no se ve en tu página."},
+	"entry-shown":   {Box: "libro", Text: "Listo. Esa firma se ve de nuevo."},
+	"handle":        {Box: "top", Text: "Listo. Tu página ya existe."},
+}
+
 // appHomeData is what app_home.html renders.
 type appHomeData struct {
 	// MoodClass is the owner's current mood key, or empty when none is set
@@ -49,6 +69,9 @@ type appHomeData struct {
 
 	// Style is the "Tu estilo" box.
 	Style styleBox
+
+	// Notice is the "it worked" line after a successful form, from ?ok=.
+	Notice notice
 }
 
 // styleBox is what the "Tu estilo" box renders: the draft the form shows,
@@ -136,7 +159,7 @@ func (s *Server) handleAppHome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.renderAppHome(w, r, http.StatusOK, u, "")
+	s.renderAppHomeMessages(w, r, http.StatusOK, u, homeMessages{Notice: notices[r.URL.Query().Get("ok")]})
 }
 
 // renderAppHome loads the account's current mood and renders the dashboard.
@@ -161,6 +184,8 @@ type homeMessages struct {
 	// Draft is a style the owner has not published, to show in the "Tu estilo"
 	// box in place of the stored one. Nil means the stored style.
 	Draft *style.Style
+	// Notice is the "it worked" line; only the GET sets it.
+	Notice notice
 }
 
 // renderAppHomeMessages is the dashboard renderer the others delegate to.
@@ -169,6 +194,7 @@ func (s *Server) renderAppHomeMessages(w http.ResponseWriter, r *http.Request, s
 		Handle: u.Handle, DisplayName: u.DisplayName,
 		NameError: msgs.Name, Error: msgs.Mood, PhotoError: msgs.Photo,
 		CanUploadPhoto: u.CanUploadPhotos,
+		Notice:         msgs.Notice,
 	}
 	if u.PhotoKey != "" {
 		data.PhotoURL = photoURL(u.PhotoKey)
@@ -193,7 +219,7 @@ func (s *Server) renderAppHomeMessages(w http.ResponseWriter, r *http.Request, s
 		// No mood set yet — data already carries the empty state.
 	default:
 		s.Logger.ErrorContext(r.Context(), "get current mood", slog.String("error", err.Error()))
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		s.renderError(w, r, http.StatusInternalServerError)
 		return
 	}
 
@@ -231,7 +257,7 @@ func (s *Server) renderAppHomeMessages(w http.ResponseWriter, r *http.Request, s
 		stored, err := s.Users.GetStyle(r.Context(), u.ID)
 		if err != nil {
 			s.Logger.ErrorContext(r.Context(), "get page style", slog.String("error", err.Error()))
-			http.Error(w, "internal server error", http.StatusInternalServerError)
+			s.renderError(w, r, http.StatusInternalServerError)
 			return
 		}
 		draft := stored
