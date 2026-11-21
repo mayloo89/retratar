@@ -25,8 +25,8 @@ func TestDashboard_SetDisplayName(t *testing.T) {
 	if resp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("POST /name status = %d, want 303", resp.StatusCode)
 	}
-	if loc := resp.Header.Get("Location"); loc != "/" {
-		t.Errorf("Location = %q, want /", loc)
+	if loc := resp.Header.Get("Location"); loc != "/?ok=name#nombre" {
+		t.Errorf("Location = %q, want /?ok=name#nombre", loc)
 	}
 
 	home := request(t, h, http.MethodGet, host, "/", nil, sessionCookie)
@@ -39,7 +39,7 @@ func TestDashboard_SetDisplayName(t *testing.T) {
 	page := getBody(t, h, "ana.retrat.ar", "/")
 	for _, want := range []string{
 		`<h1 class="blk-name">Seba</h1>`,
-		`<title>Seba</title>`,
+		`<title>Seba · retratar</title>`,
 		`<meta property="og:title" content="Seba">`,
 		`<p class="blk-address">ana.retrat.ar</p>`,
 		`Firmá el libro de Seba`,
@@ -81,9 +81,12 @@ func TestDashboard_ClearDisplayName(t *testing.T) {
 	if resp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("POST /name status = %d, want 303", resp.StatusCode)
 	}
+	if loc := resp.Header.Get("Location"); loc != "/?ok=name#nombre" {
+		t.Errorf("Location = %q, want /?ok=name#nombre", loc)
+	}
 
 	page := getBody(t, h, "ana.retrat.ar", "/")
-	for _, want := range []string{`<h1 class="blk-name">ana</h1>`, `<title>ana</title>`} {
+	for _, want := range []string{`<h1 class="blk-name">ana</h1>`, `<title>ana · retratar</title>`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("page = %q, want it to contain %q", page, want)
 		}

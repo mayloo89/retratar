@@ -38,10 +38,12 @@ func TestAppCSS_Served(t *testing.T) {
 		t.Error("GET /app.css body is empty")
 	}
 
+	// Pages hosts serve it too: their error page is styled with it, and their
+	// CSP only allows stylesheets from the page's own host.
 	pages := request(t, h, http.MethodGet, "ana.retrat.ar", "/app.css", nil)
 	defer pages.Body.Close() //nolint:errcheck // httptest body close cannot fail
-	if pages.StatusCode == http.StatusOK {
-		t.Errorf("GET /app.css on a pages host status = %d, want it not served", pages.StatusCode)
+	if pages.StatusCode != http.StatusOK {
+		t.Errorf("GET /app.css on a pages host status = %d, want 200", pages.StatusCode)
 	}
 }
 

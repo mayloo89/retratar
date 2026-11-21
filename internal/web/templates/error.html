@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · retratar</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header class="top"><a class="mark" href="{{.AppURL}}">retratar</a></header>
+<main class="sheet">
+<h1>{{.Title}}</h1>
+<div class="body">
+<p>{{.Message}}</p>
+{{if eq .Status 404}}<p><a href="{{.RandomURL}}">Otra página al azar</a></p>
+{{end}}<p><a href="{{.AppURL}}">{{.HomeText}}</a></p>
+</div>
+</main>
+<footer class="legal"><a href="{{.PrivacyURL}}">Privacidad</a> · <a href="{{.TermsURL}}">Términos</a></footer>
+</body>
+</html>

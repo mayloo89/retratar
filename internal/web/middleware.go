@@ -145,6 +145,8 @@ func Recover(logger *slog.Logger) Middleware {
 					slog.Any("panic", v),
 					slog.String("path", redactedPath(r.URL.Path)),
 				)
+				// Plain text: the handler may already have written part of a
+				// response, so a templated page could be cut in half.
 				http.Error(w, "internal server error", http.StatusInternalServerError)
 			}()
 			next.ServeHTTP(w, r)
@@ -190,7 +192,7 @@ func BodyLimit(next http.Handler) http.Handler {
 		}
 		if r.Body != nil && r.Body != http.NoBody {
 			if r.ContentLength > maxFormBody {
-				http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+				writeErrorPage(w, r, http.StatusRequestEntityTooLarge, "")
 				return
 			}
 			r.Body = http.MaxBytesReader(w, r.Body, maxFormBody)

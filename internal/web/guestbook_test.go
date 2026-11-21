@@ -451,14 +451,14 @@ func TestGuestbookHide_RemovesFromPublicPage(t *testing.T) {
 		t.Fatalf("Sign() error = %v", err)
 	}
 
-	if status, loc := hideRequest(t, h, "hide", e.ID, aCookie); status != http.StatusSeeOther || loc != "/" {
+	if status, loc := hideRequest(t, h, "hide", e.ID, aCookie); status != http.StatusSeeOther || loc != "/?ok=entry-hidden#libro" {
 		t.Fatalf("hide = %d to %q, want 303 to /", status, loc)
 	}
 	if body := pageBody(t, h, "a.retrat.ar"); strings.Contains(body, "hola desde b") {
 		t.Errorf("page still shows the hidden entry: %q", body)
 	}
 
-	if status, loc := hideRequest(t, h, "show", e.ID, aCookie); status != http.StatusSeeOther || loc != "/" {
+	if status, loc := hideRequest(t, h, "show", e.ID, aCookie); status != http.StatusSeeOther || loc != "/?ok=entry-shown#libro" {
 		t.Fatalf("show = %d to %q, want 303 to /", status, loc)
 	}
 	if body := pageBody(t, h, "a.retrat.ar"); !strings.Contains(body, "hola desde b") {

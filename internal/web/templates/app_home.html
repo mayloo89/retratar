@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <title>Tu página · retratar</title>
 <link rel="stylesheet" href="/app.css">
 </head>
@@ -13,7 +15,10 @@
 <h1>Tu página</h1>
 {{with .PageURL}}<div class="body flush"><p class="pageurl"><a href="{{.}}">Ver mi página</a> <span class="muted">{{$.PageAddress}}</span></p></div>{{end}}
 
-<section class="box"><h2 class="bar">Cómo estás</h2><div class="inner">
+{{if eq .Notice.Box "top"}}<div class="body"><p class="ok" role="status">{{.Notice.Text}}</p></div>{{end}}
+
+<section class="box" id="estado"><h2 class="bar">Cómo estás</h2><div class="inner">
+{{if eq .Notice.Box "estado"}}<p class="ok" role="status">{{.Notice.Text}}</p>{{end}}
 {{if .HasMood}}
 <p class="now">Ahora: <strong>{{.MoodLabel}}</strong>{{with .MoodNote}} ({{.}}){{end}}</p>
 {{else}}
@@ -32,7 +37,8 @@
 {{with .Error}}<p role="alert">{{.}}</p>{{end}}
 </div></section>
 
-{{if or .CanUploadPhoto .PhotoURL}}<section class="box"><h2 class="bar">Tu foto</h2><div class="inner">
+{{if or .CanUploadPhoto .PhotoURL}}<section class="box" id="foto"><h2 class="bar">Tu foto</h2><div class="inner">
+{{if eq .Notice.Box "foto"}}<p class="ok" role="status">{{.Notice.Text}}</p>{{end}}
 {{if .PhotoURL}}<img src="{{.PhotoURL}}" width="{{.PhotoWidth}}" height="{{.PhotoHeight}}" alt="Tu foto actual">
 {{end}}{{if .CanUploadPhoto}}{{if .PhotoChangedToday}}<p class="help">Ya cambiaste tu foto hoy. Mañana podés subir otra.</p>
 {{else}}<form method="post" action="/photo" enctype="multipart/form-data">
@@ -47,7 +53,8 @@
 {{end}}{{with .PhotoError}}<p role="alert">{{.}}</p>{{end}}
 </div></section>
 {{end}}
-<section class="box"><h2 class="bar">Tu nombre</h2><div class="inner">
+<section class="box" id="nombre"><h2 class="bar">Tu nombre</h2><div class="inner">
+{{if eq .Notice.Box "nombre"}}<p class="ok" role="status">{{.Notice.Text}}</p>{{end}}
 <form method="post" action="/name">
 <div class="field"><label class="sr" for="name">Tu nombre</label>
 <input type="text" id="name" name="name" value="{{.DisplayName}}">
@@ -57,7 +64,8 @@
 {{with .NameError}}<p role="alert">{{.}}</p>{{end}}
 </div></section>
 
-<section class="box"><h2 class="bar">Tu estilo</h2><div class="inner">
+<section class="box" id="estilo"><h2 class="bar">Tu estilo</h2><div class="inner">
+{{if eq .Notice.Box "estilo"}}<p class="ok" role="status">{{.Notice.Text}}</p>{{end}}
 <form method="post" action="/style">
 <p class="help">Los colores y tipografías por defecto cambian según cómo estás.</p>
 {{if .Style.Unsaved}}<p class="help">Tenés cambios sin publicar.</p>
@@ -75,8 +83,9 @@
 {{with .Style.Error}}<p role="alert">{{.}}</p>{{end}}
 </div></section>
 
-<section class="box"><h2 class="bar">Tu libro de visitas</h2>
-{{if .Guestbook}}<ul class="entries">
+<section class="box" id="libro"><h2 class="bar">Tu libro de visitas</h2>
+{{if eq .Notice.Box "libro"}}<div class="inner"><p class="ok" role="status">{{.Notice.Text}}</p></div>
+{{end}}{{if .Guestbook}}<ul class="entries">
 {{range .Guestbook}}<li{{if .Hidden}} class="hidden"{{end}}>
 <p class="meta"><a href="{{.AuthorURL}}">{{.AuthorHandle}}</a> · {{.Date}}{{if .Hidden}} <span class="tag">oculto</span>{{end}}</p>
 {{if .Hidden}}<form method="post" action="/guestbook/entries/{{.ID}}/show">
@@ -87,10 +96,11 @@
 <p class="text">{{.Body}}</p>
 </li>
 {{end}}</ul>
-{{else}}<div class="inner"><p>Todavía nadie firmó tu libro.</p></div>
+{{else}}<div class="inner">
+<p>Todavía nadie firmó tu libro.</p></div>
 {{end}}</section>
 
-<section class="box"><h2 class="bar">Tu cuenta</h2><div class="inner">
+<section class="box" id="cuenta"><h2 class="bar">Tu cuenta</h2><div class="inner">
 <p><a href="/privacy">Privacidad</a> · <a href="/terms">Términos</a></p>
 <p><a href="/account/delete">Borrar mi cuenta</a></p>
 </div></section>
