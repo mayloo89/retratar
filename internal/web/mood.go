@@ -4,10 +4,17 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/mayloo89/retratar/internal/mood"
 	"github.com/mayloo89/retratar/internal/user"
 )
+
+// noteBreaks turns the line breaks a textarea sends into single spaces. The
+// note is one line ([mood.NormaliseNote] stays strict for every other caller),
+// but the dashboard's field is a textarea, where Enter is natural. Only the
+// breaks change: the user's own spaces stay as typed.
+var noteBreaks = strings.NewReplacer("\r\n", " ", "\r", " ", "\n", " ")
 
 // handleMoodSubmit sets the signed-in account's current mood.
 func (s *Server) handleMoodSubmit(w http.ResponseWriter, r *http.Request) {
@@ -30,7 +37,7 @@ func (s *Server) handleMoodSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	key := mood.Key(r.FormValue("mood_key"))
-	note := r.FormValue("note")
+	note := noteBreaks.Replace(r.FormValue("note"))
 
 	if _, err := s.Moods.SetMood(r.Context(), u.ID, key, note); err != nil {
 		switch {

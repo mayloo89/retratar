@@ -176,7 +176,7 @@ func TestPage_EmptyGuestbook(t *testing.T) {
 	guestbookAccount(t, srv, "a@example.com", "a")
 
 	body := pageBody(t, h, "a.retrat.ar")
-	if !strings.Contains(body, "Todavía nadie firmó.") {
+	if !strings.Contains(body, "Nadie firmó todavía. Podés ser la primera persona.") {
 		t.Errorf("page body = %q, want the empty guestbook text", body)
 	}
 }

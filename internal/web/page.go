@@ -46,7 +46,7 @@ type pageData struct {
 	OGURL string
 	// OGImageURL and OGDescription each feed the OG meta tags; page.html
 	// also reuses OGDescription as the visible empty-state paragraph
-	// ("Todavía no eligió...") rather than hardcoding that sentence a
+	// ("Todavía no contó...") rather than hardcoding that sentence a
 	// second time — see [ogcard.EmptyStateText], its one source.
 	OGImageURL    string
 	OGDescription string

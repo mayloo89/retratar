@@ -197,10 +197,16 @@ func wantErrorPage(t *testing.T, r reply, status int, title string) {
 
 // sectionOf returns the dashboard's <section id="id">, up to its </section>.
 func sectionOf(body, id string) string {
-	_, rest, ok := strings.Cut(body, `<section class="box" id="`+id+`">`)
+	if _, rest, ok := strings.Cut(body, `<section class="box" id="`+id+`">`); ok {
+		section, _, _ := strings.Cut(rest, "</section>")
+		return section
+	}
+	// A block inside a box, like #nombre in Tu cuenta, ends where the box's
+	// own back link starts.
+	_, rest, ok := strings.Cut(body, `<div id="`+id+`">`)
 	if !ok {
 		return ""
 	}
-	section, _, _ := strings.Cut(rest, "</section>")
+	section, _, _ := strings.Cut(rest, `<p class="back">`)
 	return section
 }

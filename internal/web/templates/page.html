@@ -51,7 +51,7 @@
 {{range .Guestbook}}<li><p class="blk-guestbook-meta"><a href="{{.AuthorURL}}">{{.AuthorHandle}}</a>, <time>{{.Date}}</time></p><p class="blk-guestbook-body">{{.Body}}</p></li>
 {{end}}</ul>
 {{else}}
-<div class="blk-inner"><p class="blk-guestbook-empty">Todavía nadie firmó.</p></div>
+<div class="blk-inner"><p class="blk-guestbook-empty">Nadie firmó todavía. Podés ser la primera persona.</p></div>
 {{end}}
 <a class="blk-sign" href="{{.SignURL}}">Firmá el libro de {{.Name}}</a>
 </section>

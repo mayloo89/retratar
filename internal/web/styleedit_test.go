@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -415,10 +416,19 @@ func TestStyleBox_RendersEachRow(t *testing.T) {
 	if strings.Contains(home, "Tenés cambios sin publicar.") {
 		t.Error("the notice shows with nothing unpublished")
 	}
-	// Placement: after Tu nombre, before the guestbook.
-	name, box, book := strings.Index(home, "Tu nombre</h2>"), strings.Index(home, "Tu estilo</h2>"), strings.Index(home, "Tu libro de visitas</h2>")
-	if name >= box || box >= book {
-		t.Errorf("box order name=%d style=%d guestbook=%d, want Tu nombre < Tu estilo < Tu libro de visitas", name, box, book)
+	// Placement: estado, foto (if present), libro, estilo, cuenta; and the
+	// name form lives inside Tu cuenta.
+	order := []string{"Cómo estás</h2>", "Tu libro de visitas</h2>", "Tu estilo</h2>", "Tu cuenta</h2>", `id="nombre"`}
+	if strings.Contains(home, "Tu foto</h2>") {
+		order = slices.Insert(order, 1, "Tu foto</h2>")
+	}
+	prev := -1
+	for _, marker := range order {
+		at := strings.Index(home, marker)
+		if at <= prev {
+			t.Errorf("%q at %d, want it after the previous box (%d), in the order %q", marker, at, prev, order)
+		}
+		prev = at
 	}
 
 	// Every default slot shows the current mood's default and no Restablecer.

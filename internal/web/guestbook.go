@@ -18,6 +18,11 @@ import (
 type guestbookSignData struct {
 	Handle  string
 	PageURL string
+	// Name, Initial and Address identify the book's owner the way their page
+	// does (see [Server.pageFor]); the sign page's header shows them.
+	Name    string
+	Initial string
+	Address string
 
 	// MoodClass is the page owner's current mood key, or empty when they have
 	// none or the owner was not resolved. Always a mood.Key, never request
@@ -59,6 +64,9 @@ func (s *Server) guestbookState(r *http.Request, owner user.User) (data guestboo
 	data = guestbookSignData{
 		Handle:  owner.Handle,
 		PageURL: s.Config.PageBaseURL(owner.Handle) + "/",
+		Name:    owner.ShownName(),
+		Initial: initialOf(owner.ShownName()),
+		Address: s.Config.PageHostFor(owner.Handle),
 	}
 	// The sign page wears the page owner's mood, so the signer still feels
 	// they are on their friend's page. A failed lookup only costs the tint.

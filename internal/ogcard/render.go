@@ -55,7 +55,7 @@ const (
 // three independent copies of this sentence is exactly the kind of drift
 // the palette's single-source-of-truth parsing (see ParsePalette) exists to
 // avoid elsewhere; this is the same guarantee for the text.
-const EmptyStateText = "Todavía no eligió un estado de ánimo."
+const EmptyStateText = "Todavía no contó cómo está."
 
 // noneClass is the palette key for the no-mood-yet state — see
 // internal/web/static/theme.css's .mood-none rule and handlePage's
