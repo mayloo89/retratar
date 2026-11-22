@@ -438,20 +438,53 @@ func TestPhotoUpload_OncePerDay(t *testing.T) {
 	}
 }
 
+// signalReader closes started on its first Read.
+type signalReader struct {
+	r       io.Reader
+	started chan struct{}
+	once    sync.Once
+}
+
+func (s *signalReader) Read(p []byte) (int, error) {
+	s.once.Do(func() { close(s.started) })
+	return s.r.Read(p)
+}
+
 func TestPhotoUpload_RaceLoserIsRejectedAndCleanedUp(t *testing.T) {
 	e := newPhotoEnv(t)
 	c := e.signUp(t, "ana@example.com", "ana", true)
 
-	// Both requests pass the early check (the dashboard has no photo yet)
-	// and only SetPhoto decides.
+	// The overlap is forced, not hoped for. handlePhotoUpload does every cheap
+	// check, the early "already uploaded today" exit included, before it reads
+	// the body, so a request's first Read means it has passed the early check.
+	// Hold the processing slot so nothing can commit, start both uploads, wait
+	// until both have started reading, and only then release the slot. Both
+	// reach SetPhoto, and its day condition alone decides the winner.
+	release := sync.OnceFunc(e.srv.HoldPhotoSlot())
+	t.Cleanup(release) // a Fatal below must not leave the uploads queued
+	e.srv.SetPhotoSlotWait(10 * time.Second)
+
 	var wg sync.WaitGroup
 	codes := make([]int, 2)
+	started := make([]chan struct{}, 2)
 	for i := range codes {
+		started[i] = make(chan struct{})
+		body, ctype := multipartBody(t, "photo", "photo.jpg", testJPEG(t, 40, 20))
+		rd := &signalReader{r: body, started: started[i]}
 		wg.Go(func() {
-			resp := e.upload(t, c, testJPEG(t, 40, 20))
-			codes[i] = resp.Code
+			codes[i] = e.post(t, c, "/photo", ctype, rd).Code
 		})
 	}
+	for i, ch := range started {
+		select {
+		case <-ch:
+		case <-time.After(5 * time.Second):
+			release()
+			wg.Wait()
+			t.Fatalf("upload %d never started reading its body", i)
+		}
+	}
+	release()
 	wg.Wait()
 
 	wins, losses := 0, 0
@@ -468,8 +501,9 @@ func TestPhotoUpload_RaceLoserIsRejectedAndCleanedUp(t *testing.T) {
 	if wins != 1 || losses != 1 {
 		t.Errorf("wins = %d, losses = %d, want 1 and 1", wins, losses)
 	}
-	if got := e.files(t); len(got) != 1 {
-		t.Errorf("store has %v, want exactly the winner's file", got)
+	want := e.currentKey(t, c) + ".jpg"
+	if got := e.files(t); len(got) != 1 || got[0] != want {
+		t.Errorf("store has %v, want exactly the winner's file %s", got, want)
 	}
 }
 
