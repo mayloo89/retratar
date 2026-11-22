@@ -573,15 +573,21 @@ func TestAppHost_ServesThemeAndPreviewBarCSS(t *testing.T) {
 	if ct := r.Header.Get("Content-Type"); ct != "text/css; charset=utf-8" {
 		t.Errorf("/preview.css Content-Type = %q", ct)
 	}
-	// Scoped: every selector starts with .pv-, so it cannot touch the page.
+	// Scoped, so it cannot touch the page: every selector starts with .pv-, and
+	// none uses + or ~, the sibling combinators that reach out of the bar
+	// (.pv-bar + main). Descendants like .pv-bar p stay inside it.
 	rules := cssRules(string(r.Body))
 	if len(rules) == 0 {
 		t.Fatal("preview.css has no rules")
 	}
 	for _, rule := range rules {
 		for sel := range strings.SplitSeq(rule.selector, ",") {
-			if !strings.HasPrefix(strings.TrimSpace(sel), ".pv-") {
-				t.Errorf("preview.css selector %q is not scoped under .pv-", strings.TrimSpace(sel))
+			sel = strings.TrimSpace(sel)
+			if !strings.HasPrefix(sel, ".pv-") {
+				t.Errorf("preview.css selector %q is not scoped under .pv-", sel)
+			}
+			if strings.ContainsAny(sel, "+~") {
+				t.Errorf("preview.css selector %q uses a sibling combinator, which reaches outside the bar", sel)
 			}
 		}
 	}

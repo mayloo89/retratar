@@ -438,29 +438,52 @@ func TestPhotoUpload_OncePerDay(t *testing.T) {
 	}
 }
 
+// signalReader closes started on its first Read.
+type signalReader struct {
+	r       io.Reader
+	started chan struct{}
+	once    sync.Once
+}
+
+func (s *signalReader) Read(p []byte) (int, error) {
+	s.once.Do(func() { close(s.started) })
+	return s.r.Read(p)
+}
+
 func TestPhotoUpload_RaceLoserIsRejectedAndCleanedUp(t *testing.T) {
 	e := newPhotoEnv(t)
 	c := e.signUp(t, "ana@example.com", "ana", true)
 
-	// The overlap is forced, not hoped for: hold the processing slot so
-	// neither upload can commit, start both, and let them both pass the early
-	// check (no photo yet) and queue for the slot. Only then release it, so
-	// both reach SetPhoto and its day condition alone decides the winner.
-	release := e.srv.HoldPhotoSlot()
+	// The overlap is forced, not hoped for. handlePhotoUpload does every cheap
+	// check, the early "already uploaded today" exit included, before it reads
+	// the body, so a request's first Read means it has passed the early check.
+	// Hold the processing slot so nothing can commit, start both uploads, wait
+	// until both have started reading, and only then release the slot. Both
+	// reach SetPhoto, and its day condition alone decides the winner.
+	release := sync.OnceFunc(e.srv.HoldPhotoSlot())
+	t.Cleanup(release) // a Fatal below must not leave the uploads queued
 	e.srv.SetPhotoSlotWait(10 * time.Second)
 
 	var wg sync.WaitGroup
 	codes := make([]int, 2)
+	started := make([]chan struct{}, 2)
 	for i := range codes {
+		started[i] = make(chan struct{})
+		body, ctype := multipartBody(t, "photo", "photo.jpg", testJPEG(t, 40, 20))
+		rd := &signalReader{r: body, started: started[i]}
 		wg.Go(func() {
-			resp := e.upload(t, c, testJPEG(t, 40, 20))
-			codes[i] = resp.Code
+			codes[i] = e.post(t, c, "/photo", ctype, rd).Code
 		})
 	}
-	// There is no observable signal for "waiting on the slot", and adding one
-	// would mean changing production code. 300 ms is generous for two
-	// in-memory requests to reach the wait.
-	time.Sleep(300 * time.Millisecond)
+	for i, ch := range started {
+		select {
+		case <-ch:
+		case <-time.After(5 * time.Second):
+			release()
+			wg.Wait()
+			t.Fatalf("upload %d never started reading its body", i)
+		}
+	}
 	release()
 	wg.Wait()
 
