@@ -442,8 +442,13 @@ func TestPhotoUpload_RaceLoserIsRejectedAndCleanedUp(t *testing.T) {
 	e := newPhotoEnv(t)
 	c := e.signUp(t, "ana@example.com", "ana", true)
 
-	// Both requests pass the early check (the dashboard has no photo yet)
-	// and only SetPhoto decides.
+	// The overlap is forced, not hoped for: hold the processing slot so
+	// neither upload can commit, start both, and let them both pass the early
+	// check (no photo yet) and queue for the slot. Only then release it, so
+	// both reach SetPhoto and its day condition alone decides the winner.
+	release := e.srv.HoldPhotoSlot()
+	e.srv.SetPhotoSlotWait(10 * time.Second)
+
 	var wg sync.WaitGroup
 	codes := make([]int, 2)
 	for i := range codes {
@@ -452,6 +457,11 @@ func TestPhotoUpload_RaceLoserIsRejectedAndCleanedUp(t *testing.T) {
 			codes[i] = resp.Code
 		})
 	}
+	// There is no observable signal for "waiting on the slot", and adding one
+	// would mean changing production code. 300 ms is generous for two
+	// in-memory requests to reach the wait.
+	time.Sleep(300 * time.Millisecond)
+	release()
 	wg.Wait()
 
 	wins, losses := 0, 0
@@ -468,8 +478,9 @@ func TestPhotoUpload_RaceLoserIsRejectedAndCleanedUp(t *testing.T) {
 	if wins != 1 || losses != 1 {
 		t.Errorf("wins = %d, losses = %d, want 1 and 1", wins, losses)
 	}
-	if got := e.files(t); len(got) != 1 {
-		t.Errorf("store has %v, want exactly the winner's file", got)
+	want := e.currentKey(t, c) + ".jpg"
+	if got := e.files(t); len(got) != 1 || got[0] != want {
+		t.Errorf("store has %v, want exactly the winner's file %s", got, want)
 	}
 }
 

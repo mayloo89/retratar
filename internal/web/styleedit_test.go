@@ -574,13 +574,12 @@ func TestAppHost_ServesThemeAndPreviewBarCSS(t *testing.T) {
 		t.Errorf("/preview.css Content-Type = %q", ct)
 	}
 	// Scoped: every selector starts with .pv-, so it cannot touch the page.
-	css := regexp.MustCompile(`(?s)/\*.*?\*/`).ReplaceAllString(string(r.Body), "")
-	selectors := regexp.MustCompile(`(?m)^([^{}\n][^{}]*)\{`).FindAllStringSubmatch(css, -1)
-	if len(selectors) == 0 {
+	rules := cssRules(string(r.Body))
+	if len(rules) == 0 {
 		t.Fatal("preview.css has no rules")
 	}
-	for _, m := range selectors {
-		for sel := range strings.SplitSeq(m[1], ",") {
+	for _, rule := range rules {
+		for sel := range strings.SplitSeq(rule.selector, ",") {
 			if !strings.HasPrefix(strings.TrimSpace(sel), ".pv-") {
 				t.Errorf("preview.css selector %q is not scoped under .pv-", strings.TrimSpace(sel))
 			}
