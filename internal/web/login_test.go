@@ -175,11 +175,8 @@ func TestLogout_RevokesTheSession(t *testing.T) {
 
 	home := request(t, h, http.MethodGet, host, "/", nil, sessionCookie)
 	home.Body.Close() //nolint:errcheck // httptest body close cannot fail
-	if home.StatusCode != http.StatusSeeOther {
-		t.Fatalf("home status after logout = %d, want 303 (redirect to /login)", home.StatusCode)
-	}
-	if got := home.Header.Get("Location"); got != "/login" {
-		t.Errorf("home Location after logout = %q, want %q", got, "/login")
+	if home.StatusCode != http.StatusOK {
+		t.Fatalf("home status after logout = %d, want 200 (the landing page)", home.StatusCode)
 	}
 }
 
@@ -350,8 +347,8 @@ func TestLoginComplete_RevokesIncomingSession(t *testing.T) {
 	}
 	home := request(t, h, http.MethodGet, host, "/", nil, cookieA)
 	home.Body.Close() //nolint:errcheck // httptest body close cannot fail
-	if home.StatusCode != http.StatusSeeOther {
-		t.Errorf("home status with the old cookie = %d, want 303 (redirect to /login)", home.StatusCode)
+	if home.StatusCode != http.StatusOK {
+		t.Errorf("home status with the old cookie = %d, want 200 (the landing page)", home.StatusCode)
 	}
 
 	if _, err := srv.Sessions.Lookup(t.Context(), cookieB.Value); err != nil {

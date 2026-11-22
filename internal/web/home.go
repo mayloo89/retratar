@@ -85,6 +85,11 @@ type styleBox struct {
 	// Unsaved is set when the draft differs from what is stored.
 	Unsaved bool
 	Error   string
+	// Custom is true when any slot is customised, for the fold's summary.
+	Custom bool
+	// Open unfolds the box: after the owner published, hit an error, or has a
+	// draft to keep editing. A plain visit finds it closed.
+	Open bool
 }
 
 // styleColorRow is one colour slot. Hex is the draft's value, or the slot's
@@ -116,6 +121,7 @@ func styleBoxFor(draft, stored style.Style, moodKey, errMsg string) styleBox {
 		if c, ok := draft.Colors[slot.Key]; ok {
 			row.Hex, row.Custom = c, true
 		}
+		box.Custom = box.Custom || row.Custom
 		box.Colors = append(box.Colors, row)
 	}
 	fontRow := func(field, reset, label, chosen, defaultKey string) styleFontRow {
@@ -129,6 +135,9 @@ func styleBoxFor(draft, stored style.Style, moodKey, errMsg string) styleBox {
 	box.Fonts = []styleFontRow{
 		fontRow(fieldHeadFont, resetHead, "Tipografía de los títulos", draft.HeadFont, style.DefaultHeadFont),
 		fontRow(fieldBodyFont, resetBody, "Tipografía del texto", draft.BodyFont, style.DefaultBodyFont),
+	}
+	for _, f := range box.Fonts {
+		box.Custom = box.Custom || f.Custom
 	}
 	return box
 }
@@ -144,13 +153,13 @@ type ownEntryView struct {
 	Hidden       bool
 }
 
-// handleAppHome is the signed-in landing page. An anonymous visitor is sent
-// to sign in. An account with no handle yet sees the claim form instead of
+// handleAppHome is the app root. An anonymous visitor sees the landing page,
+// whose form posts to /login. An account with no handle yet sees the claim form instead of
 // the dashboard — there is no page URL to show until one is claimed.
 func (s *Server) handleAppHome(w http.ResponseWriter, r *http.Request) {
 	u, ok := UserFrom(r.Context())
 	if !ok {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		s.renderTemplate(w, http.StatusOK, "landing.html", nil)
 		return
 	}
 
@@ -269,6 +278,7 @@ func (s *Server) renderAppHomeMessages(w http.ResponseWriter, r *http.Request, s
 			moodKey = data.MoodClass
 		}
 		data.Style = styleBoxFor(draft, stored, moodKey, msgs.Style)
+		data.Style.Open = msgs.Notice.Box == "estilo" || msgs.Style != "" || msgs.Draft != nil || data.Style.Unsaved
 	}
 
 	s.renderTemplate(w, status, "app_home.html", data)

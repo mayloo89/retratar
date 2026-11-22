@@ -169,12 +169,8 @@ func TestDeleteAccount_RemovesEverything(t *testing.T) {
 		t.Errorf("photo store has %v, want the photo gone from disk", files)
 	}
 
-	// The old cookie is a dead session.
-	home := e.status(t, appHost, "/", s.ana)
-	wantStatus(t, home, http.StatusSeeOther)
-	if loc := home.Header.Get("Location"); loc != "/login" {
-		t.Errorf("GET / Location = %q, want /login", loc)
-	}
+	// The old cookie is a dead session: / shows the landing page.
+	wantBodyHas(t, e.status(t, appHost, "/", s.ana), http.StatusOK, `action="/login"`)
 	// And bob is untouched.
 	wantBodyHas(t, e.status(t, appHost, "/", s.bob), http.StatusOK, "https://bob.retrat.ar")
 }

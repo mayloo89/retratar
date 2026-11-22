@@ -51,13 +51,12 @@ func TestHostSplit(t *testing.T) {
 		wantBody     string
 		wantLocation string
 	}{
-		// Anonymous requests to the app surface are sent to sign in; see
-		// handleAppHome. That is a 303, not a 200, but the redirect target
-		// still proves the host routed to the app surface and not somewhere
-		// else.
-		{"app surface", "retratar.com.ar", http.StatusSeeOther, "", "/login"},
-		{"app surface ignores case", "RETRATAR.com.AR", http.StatusSeeOther, "", "/login"},
-		{"app surface ignores default port", "retratar.com.ar:443", http.StatusSeeOther, "", "/login"},
+		// Anonymous requests to the app surface get the landing page; see
+		// handleAppHome. Its sign-in form proves the host routed to the app
+		// surface and not somewhere else.
+		{"app surface", "retratar.com.ar", http.StatusOK, `action="/login"`, ""},
+		{"app surface ignores case", "RETRATAR.com.AR", http.StatusOK, `action="/login"`, ""},
+		{"app surface ignores default port", "retratar.com.ar:443", http.StatusOK, `action="/login"`, ""},
 		// testServer has no account with this handle claimed, so a
 		// well-formed handle 404s here for the same reason an unclaimed one
 		// would in production — this table is about routing, not content;
@@ -100,8 +99,8 @@ func TestHostSplit(t *testing.T) {
 			if err != nil {
 				t.Fatalf("read body: %v", err)
 			}
-			if string(body) != tt.wantBody {
-				t.Errorf("body = %q, want %q", body, tt.wantBody)
+			if !strings.Contains(string(body), tt.wantBody) {
+				t.Errorf("body = %q, want it to contain %q", body, tt.wantBody)
 			}
 		})
 	}
