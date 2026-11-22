@@ -204,8 +204,7 @@ func TestPageStyles_ColumnsRejectBadShapes(t *testing.T) {
 		_, err := pool.Exec(t.Context(), q, u.ID)
 		// 23514 is check_violation: each case must be refused by its CHECK, not
 		// by something unrelated such as the primary key.
-		var pgErr *pgconn.PgError
-		if !errors.As(err, &pgErr) || pgErr.Code != "23514" {
+		if pgErr, ok := errors.AsType[*pgconn.PgError](err); !ok || pgErr.Code != "23514" {
 			t.Errorf("%s: error = %v, want a CHECK violation (23514)", name, err)
 		}
 	}

@@ -289,8 +289,7 @@ func TestPhotoColumnsConsistent(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			_, err := pool.Exec(t.Context(), stmt, u.ID)
-			var pgErr *pgconn.PgError
-			if !errors.As(err, &pgErr) || pgErr.Code != "23514" {
+			if pgErr, ok := errors.AsType[*pgconn.PgError](err); !ok || pgErr.Code != "23514" {
 				t.Fatalf("Exec() error = %v, want a CHECK violation (23514)", err)
 			}
 		})
@@ -316,8 +315,7 @@ func TestPhotoKeyIsUnique(t *testing.T) {
 	}
 	_, err = pool.Exec(t.Context(),
 		`UPDATE users SET photo_key = $2, photo_width = 1, photo_height = 1 WHERE id = $1`, bob.ID, keyA)
-	var pgErr *pgconn.PgError
-	if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
+	if pgErr, ok := errors.AsType[*pgconn.PgError](err); !ok || pgErr.Code != "23505" {
 		t.Fatalf("Exec() error = %v, want a unique violation (23505)", err)
 	}
 }

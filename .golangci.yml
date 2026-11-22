@@ -34,6 +34,7 @@ linters:
     - usestdlibvars   # http.MethodGet over "GET"
     - copyloopvar
     - intrange        # `for i := range n` over the three-clause form
+    - modernize       # newer stdlib forms: wg.Go, errors.AsType, slices/maps helpers
     - errname         # ErrFoo / FooError naming
     - godot           # comments end in a period
     - testifylint

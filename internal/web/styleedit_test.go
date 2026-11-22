@@ -2,6 +2,7 @@ package web_test
 
 import (
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -359,9 +360,7 @@ func TestStyleSubmit_BadActionIs400(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := styleForm("none", nil)
-			for k, v := range extra {
-				f[k] = v
-			}
+			maps.Copy(f, extra)
 			wantStatus(t, e.form(t, c, "/style", f), http.StatusBadRequest)
 		})
 	}
@@ -581,7 +580,7 @@ func TestAppHost_ServesThemeAndPreviewBarCSS(t *testing.T) {
 		t.Fatal("preview.css has no rules")
 	}
 	for _, m := range selectors {
-		for _, sel := range strings.Split(m[1], ",") {
+		for sel := range strings.SplitSeq(m[1], ",") {
 			if !strings.HasPrefix(strings.TrimSpace(sel), ".pv-") {
 				t.Errorf("preview.css selector %q is not scoped under .pv-", strings.TrimSpace(sel))
 			}

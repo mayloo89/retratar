@@ -514,8 +514,8 @@ func (s *Service) ByPhotoKey(ctx context.Context, key string) (User, error) {
 
 // isUniqueViolation reports whether err is a Postgres unique-index conflict.
 func isUniqueViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == uniqueViolation
+	pgErr, ok := errors.AsType[*pgconn.PgError](err)
+	return ok && pgErr.Code == uniqueViolation
 }
 
 // NormaliseEmail folds an address to the single form used as the login

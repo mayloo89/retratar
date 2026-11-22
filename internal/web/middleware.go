@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 )
@@ -25,8 +26,8 @@ type Middleware func(http.Handler) http.Handler
 
 // Chain applies middlewares so the first listed runs outermost.
 func Chain(h http.Handler, middlewares ...Middleware) http.Handler {
-	for i := len(middlewares) - 1; i >= 0; i-- {
-		h = middlewares[i](h)
+	for _, m := range slices.Backward(middlewares) {
+		h = m(h)
 	}
 	return h
 }
